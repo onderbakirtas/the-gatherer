@@ -1,0 +1,40 @@
+{
+  "game": {
+    "controls": {
+      "title": "Oyun Kontrolleri",
+      "movement": "Sağ tıklama: Konuma hareket et",
+      "gathering": "Sol tıklama: Kaynakları topla",
+      "close": "Kapatmak için bu açılır pencerenin dışına tıklayın",
+      "scroll": "Kaydırmak için fare tekerleğini kullanın"
+    },
+    "resources": {
+      "title": "Kaynak Bilgileri",
+      "common": "Yaygın",
+      "uncommon": "Nadir",
+      "rare": "Çok Nadir"
+    },
+    "tips": {
+      "title": "İpuçları",
+      "noMovement": "Kaynak toplarken hareket edemezsiniz",
+      "cursorChange": "Toplanabilir bir kaynağın üzerine geldiğinizde imleç değişir",
+      "refill": "Toplanan kaynaklar belirli bir süre sonra yenilenir",
+      "minimap": "Sol alt köşedeki mini harita konumunuzu gösterir",
+      "resourceLimits": "Kaynaklar sınırlıdır: en fazla 2 Seviye 3 ve 5 Seviye 2",
+      "shardLimit": "Haritada toplam 500 parça sınırı vardır",
+      "inventory": "Envanteriniz sağ üst köşede gösterilir"
+    },
+    "ui": {
+      "controls": "Kontroller",
+      "settings": "Ayarlar",
+      "loading": "Yükleniyor..."
+    },
+    "settings": {
+      "title": "Ayarlar",
+      "language": "Dil",
+      "close": "Kapatmak için bu açılır pencerenin dışına tıklayın"
+    },
+    "gathering": "Toplanıyor",
+    "level": "Seviye",
+    "inventory": "Envanter"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "game": {
+    "controls": {
+      "title": "Game Controls",
+      "movement": "Right-click: Move to location",
+      "gathering": "Left-click: Gather resources",
+      "close": "Click anywhere outside this popup to close",
+      "scroll": "Use mouse wheel to scroll"
+    },
+    "resources": {
+      "title": "Resource Information",
+      "common": "Common",
+      "uncommon": "Uncommon",
+      "rare": "Rare"
+    },
+    "tips": {
+      "title": "Tips",
+      "noMovement": "You cannot move while gathering",
+      "cursorChange": "Cursor changes when you can gather a resource",
+      "refill": "Gathered resources will refill after some time",
+      "minimap": "The minimap in the bottom left shows your position",
+      "resourceLimits": "Resources are limited: max 2 Tier 3 and 5 Tier 2",
+      "shardLimit": "Total shards on the map are limited to 500",
+      "inventory": "Your inventory is shown in the top right corner"
+    },
+    "ui": {
+      "controls": "Controls",
+      "settings": "Settings",
+      "loading": "Loading..."
+    },
+    "settings": {
+      "title": "Settings",
+      "language": "Language",
+      "close": "Click anywhere outside this popup to close"
+    },
+    "gathering": "Gathering",
+    "level": "Tier",
+    "inventory": "Inventory"
+  }
+}
