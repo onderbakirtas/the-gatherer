@@ -1,8 +1,10 @@
 {
   "name": "the-gatherer",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.2",
   "type": "module",
+  "author": "Önder Bakırtaş",
+  "repository": "https://github.com/onderbakirtas/the-gatherer",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
