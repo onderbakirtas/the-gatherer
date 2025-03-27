@@ -56,3 +56,5 @@ export const ASSET_PATHS = {
     RESOURCE_T4: "/assets/resources/t4.png",
     RESOURCE_T5: "/assets/resources/t5.png",
 };
+
+export const DEFAULT_MAP_ID = "f0d38487-e743-432d-9a74-65dd6b219a26"

@@ -16,13 +16,15 @@ import {
   MAX_TIER2_RESOURCES,
   RESOURCE_SHARD_VALUES,
   RESOURCE_COLORS,
-  ASSET_PATHS
+  ASSET_PATHS,
+  DEFAULT_MAP_ID
 } from './constants/game';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import db from './utils/db';
 
 async function setup() {
   await sleep(3);
-  invoke('set_complete', { task: 'frontend' })
+  await invoke('set_complete', { task: 'frontend' });
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -39,7 +41,7 @@ document.getElementById('titlebar-close')?.addEventListener('click', () => {
   appWindows.close();
 });
 
-document.getElementById('titlebar-move')?.addEventListener('mousedown', (e) => {
+document.getElementById('titlebar-move')?.addEventListener('mousedown', e => {
   if (e.buttons === 1) {
     // Primary (left) button
     appWindows.startDragging(); // Else start dragging
@@ -519,38 +521,32 @@ class Resource {
     if (!this.isGathered) {
       // Save the current context state
       ctx.save();
-      
+
       // Add glow effect based on resource rarity
       const isInRange = this.isPlayerInRange(playerPosition);
       const glowColor = this.getColor();
       const glowIntensity = isInRange ? 20 : 10; // More intense glow when in range
-      
+
       // Apply shadow for glow effect
       ctx.shadowColor = glowColor;
       ctx.shadowBlur = glowIntensity;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
-      
+
       // Draw the resource image
-      ctx.drawImage(
-        this.image,
-        screenX - RESOURCE_SIZE / 2,
-        screenY - RESOURCE_SIZE / 2,
-        RESOURCE_SIZE,
-        RESOURCE_SIZE
-      );
-      
+      ctx.drawImage(this.image, screenX - RESOURCE_SIZE / 2, screenY - RESOURCE_SIZE / 2, RESOURCE_SIZE, RESOURCE_SIZE);
+
       // Restore the context state
       ctx.restore();
-      
+
       // Draw gathering progress if being gathered
       if (this.isBeingGathered) {
         const progressPercentage = this.gatherProgress / this.gatherTime;
-        
+
         // Draw progress bar background
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
         ctx.fillRect(screenX - RESOURCE_SIZE / 2, screenY + RESOURCE_SIZE / 2 + 5, RESOURCE_SIZE, 5);
-        
+
         // Draw progress bar
         ctx.fillStyle = this.getColor();
         ctx.fillRect(
@@ -565,29 +561,23 @@ class Resource {
     // Draw refill progress if gathered
     if (this.isGathered) {
       ctx.save();
-      
+
       // Draw semi-transparent image
       ctx.globalAlpha = 0.5;
-      ctx.drawImage(
-        this.image,
-        screenX - RESOURCE_SIZE / 2,
-        screenY - RESOURCE_SIZE / 2,
-        RESOURCE_SIZE,
-        RESOURCE_SIZE
-      );
-      
+      ctx.drawImage(this.image, screenX - RESOURCE_SIZE / 2, screenY - RESOURCE_SIZE / 2, RESOURCE_SIZE, RESOURCE_SIZE);
+
       // Reset alpha
       ctx.globalAlpha = 1.0;
-      
+
       // Draw refill timer
       ctx.fillStyle = 'white';
       ctx.font = '16px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
+
       const timeLeft = Math.ceil(this.refillTime - this.refillProgress);
       ctx.fillText(timeLeft.toString(), screenX, screenY);
-      
+
       ctx.restore();
     }
   }
@@ -767,15 +757,9 @@ class Player {
     ctx.shadowBlur = 10;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
-    
+
     // Draw the resource image
-    ctx.drawImage(
-      this.currentResource.image,
-      barX + 5,
-      barY + 5,
-      iconSize - 10,
-      iconSize - 10
-    );
+    ctx.drawImage(this.currentResource.image, barX + 5, barY + 5, iconSize - 10, iconSize - 10);
     ctx.restore();
 
     // Draw progress bar background (dark gradient)
@@ -851,7 +835,7 @@ class Player {
     // Draw the resource image
     ctx.drawImage(resourceT1Image, inventoryX + 10, inventoryY + 30, iconSize, iconSize);
     ctx.restore();
-    
+
     ctx.fillStyle = 'white';
     ctx.fillText(
       `${t('game.resources.common')}: ${this.inventory[ResourceRarity.COMMON]}`,
@@ -869,7 +853,7 @@ class Player {
     // Draw the resource image
     ctx.drawImage(resourceT2Image, inventoryX + 10, inventoryY + 54, iconSize, iconSize);
     ctx.restore();
-    
+
     ctx.fillStyle = 'white';
     ctx.fillText(
       `${t('game.resources.uncommon')}: ${this.inventory[ResourceRarity.UNCOMMON]}`,
@@ -887,7 +871,7 @@ class Player {
     // Draw the resource image
     ctx.drawImage(resourceT3Image, inventoryX + 10, inventoryY + 78, iconSize, iconSize);
     ctx.restore();
-    
+
     ctx.fillStyle = 'white';
     ctx.fillText(
       `${t('game.resources.rare')}: ${this.inventory[ResourceRarity.RARE]}`,
@@ -905,7 +889,7 @@ class Player {
     // Draw the resource image
     ctx.drawImage(resourceT4Image, inventoryX + 10, inventoryY + 102, iconSize, iconSize);
     ctx.restore();
-    
+
     ctx.fillStyle = 'white';
     ctx.fillText(
       `${t('game.resources.epic')}: ${this.inventory[ResourceRarity.EPIC]}`,
@@ -923,7 +907,7 @@ class Player {
     // Draw the resource image
     ctx.drawImage(resourceT5Image, inventoryX + 10, inventoryY + 126, iconSize, iconSize);
     ctx.restore();
-    
+
     ctx.fillStyle = 'white';
     ctx.fillText(
       `${t('game.resources.legendary')}: ${this.inventory[ResourceRarity.LEGENDARY]}`,
@@ -975,9 +959,6 @@ class Game {
     this.player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2);
     this.camera = new Camera(this.player.position);
 
-    // Generate resources
-    this.generateResources();
-
     // Set up event listeners
     this.setupEventListeners();
 
@@ -997,11 +978,49 @@ class Game {
 
     // Load assets
     this.loadAssets();
+
+    // JSON dosyasından kaynakları yükle
+    await this.generateResources();
   }
 
-  generateResources() {
+  async generateResources() {
     // Clear existing resources
     this.resources = [];
+
+    try {
+      const mapsResult = await db.queryOnce({
+        maps: {
+          $: {
+            where: {
+              id: DEFAULT_MAP_ID
+            }
+          }
+        }
+      });
+
+      const dbResources = mapsResult.data?.maps?.find(map => map.id === DEFAULT_MAP_ID)?.resources;
+
+      if (dbResources && Array.isArray(dbResources)) {
+        dbResources.forEach((resource: { x: number; y: number; rarity: number }) => {
+          if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
+            const newResource = new Resource(resource.x, resource.y, resource.rarity);
+
+            this.resources.push(newResource);
+          }
+        });
+
+        console.log(`Loaded ${this.resources.length} resources from DB`);
+      } else {
+        throw new Error('Invalid JSON format');
+      }
+    } catch (error) {
+      console.error('Error loading resources from DB:', error);
+      this.generateDefaultResources();
+    }
+  }
+
+  generateDefaultResources() {
+    console.log('Generating default resources');
 
     // Track resource counts and total shards
     let totalShards = 0;

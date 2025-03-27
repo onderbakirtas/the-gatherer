@@ -1,6 +1,6 @@
 [package]
 name = "the-gatherer"
-version = "0.0.3"
+version = "0.0.4"
 description = "A game where you gather resources"
 authors = ["Önder Bakırtaş"]
 edition = "2021"

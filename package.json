@@ -1,7 +1,7 @@
 {
   "name": "the-gatherer",
   "private": true,
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
   "author": "Önder Bakırtaş",
   "repository": "https://github.com/onderbakirtas/the-gatherer",
@@ -14,12 +14,18 @@
     "tb": "tauri build"
   },
   "dependencies": {
+    "@instantdb/core": "^0.17.32",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
-    "vite": "^6.0.3",
-    "typescript": "~5.6.2"
+    "typescript": "~5.6.2",
+    "vite": "^6.0.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
