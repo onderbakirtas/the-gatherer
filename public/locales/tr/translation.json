@@ -11,7 +11,9 @@
       "title": "Kaynak Bilgileri",
       "common": "Yaygın",
       "uncommon": "Nadir",
-      "rare": "Çok Nadir"
+      "rare": "Çok Nadir",
+      "epic": "Efsanevi",
+      "legendary": "Efsane"
     },
     "tips": {
       "title": "İpuçları",

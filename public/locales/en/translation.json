@@ -11,7 +11,9 @@
       "title": "Resource Information",
       "common": "Common",
       "uncommon": "Uncommon",
-      "rare": "Rare"
+      "rare": "Rare",
+      "epic": "Epic",
+      "legendary": "Legendary"
     },
     "tips": {
       "title": "Tips",
