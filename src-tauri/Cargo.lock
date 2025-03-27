@@ -3773,13 +3773,14 @@ dependencies = [
 
 [[package]]
 name = "the-gatherer"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tokio",
 ]
 
 [[package]]

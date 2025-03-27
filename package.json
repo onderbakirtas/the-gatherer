@@ -1,7 +1,7 @@
 {
   "name": "the-gatherer",
   "private": true,
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "author": "Önder Bakırtaş",
   "repository": "https://github.com/onderbakirtas/the-gatherer",
@@ -9,7 +9,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "td": "tauri dev",
+    "tb": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

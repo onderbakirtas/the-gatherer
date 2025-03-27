@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -10,6 +10,11 @@
 
   <body>
     <main class="game-container">
+      <div data-tauri-drag-region id="titlebar" class="titlebar">
+        <div class="titlebar-button" id="titlebar-minimize">&minus;</div>
+        <div class="titlebar-button" id="titlebar-move" data-tauri-drag-region>&#10021;</div>
+        <div class="titlebar-button" id="titlebar-close">✖</div>
+      </div>
       <div id="game-wrapper">
         <canvas id="game-canvas" width="960" height="540"></canvas>
       </div>

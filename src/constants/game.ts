@@ -16,7 +16,7 @@ export const MINIMAP_SIZE = 150; // Size of the minimap
 export const MINIMAP_PADDING = 10; // Padding from the edge of the screen
 
 // Resource settings
-export const RESOURCE_SIZE = 40; // Size of resource nodes
+export const RESOURCE_SIZE = 64; // Size of resource nodes
 export const RESOURCE_GATHER_DISTANCE = 100; // Distance at which player can gather resources
 
 // Resource limits
@@ -50,4 +50,9 @@ export const RESOURCE_COLORS = {
 export const ASSET_PATHS = {
     GRASS: "/assets/grass.png",
     CLIFF: "/assets/cliff.png",
+    RESOURCE_T1: "/assets/resources/t1.png",
+    RESOURCE_T2: "/assets/resources/t2.png",
+    RESOURCE_T3: "/assets/resources/t3.png",
+    RESOURCE_T4: "/assets/resources/t4.png",
+    RESOURCE_T5: "/assets/resources/t5.png",
 };
