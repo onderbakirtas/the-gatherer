@@ -1,7 +1,7 @@
 {
   "name": "the-gatherer",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "author": "Önder Bakırtaş",
   "repository": "https://github.com/onderbakirtas/the-gatherer",
