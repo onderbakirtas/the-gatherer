@@ -28,17 +28,20 @@
     "ui": {
       "controls": "Controls",
       "settings": "Settings",
-      "loading": "Loading..."
+      "loading": "Loading...",
+      "inventory": "Inventory",
+      "fps": "FPS"
     },
     "settings": {
       "title": "Settings",
       "language": "Language",
       "displayName": "Display Name",
       "changeName": "Change Name",
-      "enterName": "Enter your display name",
-      "welcome": "Welcome! Please enter your display name.",
+      "enterName": "Enter your name",
+      "welcome": "Welcome to The Gatherer! Please enter your display name:",
       "save": "Save",
-      "close": "Click anywhere outside this popup to close"
+      "close": "Click outside to close",
+      "playerColor": "Player Color"
     },
     "gathering": "Gathering",
     "level": "Tier",

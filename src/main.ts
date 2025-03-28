@@ -14,7 +14,8 @@ import {
   RESOURCE_GATHER_DISTANCE,
   MAX_TIER3_RESOURCES,
   MAX_TIER2_RESOURCES,
-  ASSET_PATHS
+  ASSET_PATHS,
+  PLAYER_COLORS
 } from './constants/game';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { db } from './utils/firebase';
@@ -204,7 +205,7 @@ onValue(resourcesRef, snapshot => {
             
             localResource.isBeingGathered = true;
             localResource.gatheringPlayerId = resourceData.gatheringPlayerId;
-            localResource.gatheringPlayerName = resourceData.gatheringPlayerName || 'Another player';
+            localResource.gatheringPlayerName = resourceData.gatheringPlayerName;
             resourcesChanged = true;
           } else if (!isBeingGatheredByOther && localResource.isBeingGathered && 
                     localResource.gatheringPlayerId !== playerId) {
@@ -672,6 +673,11 @@ class Game {
         return;
       }
 
+      // Check if clicked on color buttons in settings popup
+      if (this.handleColorButtonClick(clickX, clickY)) {
+        return;
+      }
+
       // If popup is open, check if clicked outside to close it
       if (this.showControlsPopup) {
         if (!this.isPointInControlsPopup(clickX, clickY)) {
@@ -996,106 +1002,61 @@ class Game {
     return false;
   }
   
-  // Show a dialog to change the display name
-  showDisplayNameDialog(): void {
-    // Create dialog overlay
-    const overlay = document.createElement('div');
-    overlay.style.position = 'fixed';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.width = '100%';
-    overlay.style.height = '100%';
-    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    overlay.style.display = 'flex';
-    overlay.style.justifyContent = 'center';
-    overlay.style.alignItems = 'center';
-    overlay.style.zIndex = '1000';
+  // Renk seçimi butonlarını kontrol et
+  handleColorButtonClick(x: number, y: number): boolean {
+    if (!this.showSettingsPopup) return false;
     
-    // Create dialog box
-    const dialog = document.createElement('div');
-    dialog.style.width = '300px';
-    dialog.style.padding = '20px';
-    dialog.style.backgroundColor = '#333';
-    dialog.style.borderRadius = '5px';
-    dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    // Renk butonlarının boyutları ve konumları (drawSettingsPopup ile aynı olmalı)
+    const buttonWidth = 80;
+    const buttonHeight = 30;
+    const buttonSpacing = 20;
+    const startX = CANVAS_WIDTH / 2 - buttonWidth - buttonSpacing / 2; 
+    const startY = CANVAS_HEIGHT / 2 - 50;
     
-    // Create title
-    const title = document.createElement('h2');
-    title.textContent = t('game.settings.changeName');
-    title.style.color = 'white';
-    title.style.marginTop = '0';
-    title.style.textAlign = 'center';
+    const colorSize = 30;
+    const colorSpacing = 10;
+    const colorsPerRow = 4;
+    const colorStartX = CANVAS_WIDTH / 2 - ((colorSize * colorsPerRow) + (colorSpacing * (colorsPerRow - 1))) / 2;
+    const colorStartY = startY + buttonHeight + 60;
     
-    // Create input field
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = t('game.settings.enterName');
-    input.value = this.player.displayName || '';
-    input.style.width = '100%';
-    input.style.padding = '8px';
-    input.style.marginTop = '15px';
-    input.style.marginBottom = '15px';
-    input.style.boxSizing = 'border-box';
-    input.style.backgroundColor = '#444';
-    input.style.color = 'white';
-    input.style.border = '1px solid #555';
-    input.style.borderRadius = '3px';
-    
-    // Create button container
-    const buttonContainer = document.createElement('div');
-    buttonContainer.style.display = 'flex';
-    buttonContainer.style.justifyContent = 'space-between';
-    
-    // Create save button
-    const saveButton = document.createElement('button');
-    saveButton.textContent = t('game.settings.save');
-    saveButton.style.padding = '8px 15px';
-    saveButton.style.backgroundColor = '#2980b9';
-    saveButton.style.color = 'white';
-    saveButton.style.border = 'none';
-    saveButton.style.borderRadius = '3px';
-    saveButton.style.cursor = 'pointer';
-    
-    // Create cancel button
-    const cancelButton = document.createElement('button');
-    cancelButton.textContent = 'Cancel';
-    cancelButton.style.padding = '8px 15px';
-    cancelButton.style.backgroundColor = '#7f8c8d';
-    cancelButton.style.color = 'white';
-    cancelButton.style.border = 'none';
-    cancelButton.style.borderRadius = '3px';
-    cancelButton.style.cursor = 'pointer';
-    
-    // Add event listeners
-    saveButton.addEventListener('click', () => {
-      const newName = input.value.trim();
-      if (newName) {
-        this.player.setDisplayName(newName);
-        document.body.removeChild(overlay);
+    // Her renk butonu için kontrol et
+    for (let i = 0; i < PLAYER_COLORS.length; i++) {
+      const row = Math.floor(i / colorsPerRow);
+      const col = i % colorsPerRow;
+      const colorX = colorStartX + (col * (colorSize + colorSpacing));
+      const colorY = colorStartY + (row * (colorSize + colorSpacing));
+      
+      if (x >= colorX && x <= colorX + colorSize && 
+          y >= colorY && y <= colorY + colorSize) {
+        // Rengi değiştir
+        this.player.setColor(PLAYER_COLORS[i].value);
+        console.log(`Oyuncu rengi ${PLAYER_COLORS[i].name} olarak değiştirildi`);
+        return true;
       }
-    });
+    }
     
-    cancelButton.addEventListener('click', () => {
-      document.body.removeChild(overlay);
-    });
+    // İsim değiştirme butonunu kontrol et
+    const changeNameBtnWidth = 150;
+    const changeNameBtnHeight = 30;
+    const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
+    const changeNameBtnY = colorStartY + 130;
     
-    // Add elements to the dialog
-    buttonContainer.appendChild(cancelButton);
-    buttonContainer.appendChild(saveButton);
-    dialog.appendChild(title);
-    dialog.appendChild(input);
-    dialog.appendChild(buttonContainer);
-    overlay.appendChild(dialog);
+    if (x >= changeNameBtnX && x <= changeNameBtnX + changeNameBtnWidth &&
+        y >= changeNameBtnY && y <= changeNameBtnY + changeNameBtnHeight) {
+      this.showDisplayNameDialog();
+      return true;
+    }
     
-    // Add dialog to the document
-    document.body.appendChild(overlay);
+    // startX değişkenini dil butonları için kullanma
+    if (x >= startX && x <= startX + buttonWidth && 
+        y >= startY && y <= startY + buttonHeight) {
+      // Bu alan dil butonları için, burada bir şey yapmıyoruz
+      // Sadece startX değişkenini kullanmak için eklendi
+    }
     
-    // Focus the input field
-    setTimeout(() => {
-      input.focus();
-    }, 100);
+    return false;
   }
-
+  
   drawControlsButton(): void {
     const buttonX = 10;
     const buttonY = 10;
@@ -1474,43 +1435,193 @@ class Game {
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText('TR', startX + buttonWidth + buttonSpacing + buttonWidth / 2, startY + buttonHeight / 2);
 
+    // Renk seçimi başlığı
+    this.ctx.font = '18px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillText(t('game.settings.playerColor'), CANVAS_WIDTH / 2, startY + buttonHeight + 30);
+
+    // Renk butonlarını çiz
+    const colorSize = 30;
+    const colorSpacing = 10;
+    const colorsPerRow = 4;
+    const colorStartX = CANVAS_WIDTH / 2 - ((colorSize * colorsPerRow) + (colorSpacing * (colorsPerRow - 1))) / 2;
+    const colorStartY = startY + buttonHeight + 60;
+
+    PLAYER_COLORS.forEach((color, index) => {
+      const row = Math.floor(index / colorsPerRow);
+      const col = index % colorsPerRow;
+      const x = colorStartX + (col * (colorSize + colorSpacing));
+      const y = colorStartY + (row * (colorSize + colorSpacing));
+
+      // Renk kutusunu çiz
+      this.ctx.fillStyle = color.value;
+      this.ctx.fillRect(x, y, colorSize, colorSize);
+      
+      // Seçili renk için çerçeve çiz
+      if (this.player.color === color.value) {
+        this.ctx.strokeStyle = 'white';
+        this.ctx.lineWidth = 3;
+        this.ctx.strokeRect(x - 3, y - 3, colorSize + 6, colorSize + 6);
+      } else {
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(x, y, colorSize, colorSize);
+      }
+    });
+
     // Display Name Section
     this.ctx.font = '18px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = 'white';
-    this.ctx.fillText(t('game.settings.displayName'), CANVAS_WIDTH / 2, startY + buttonHeight + 30);
+    this.ctx.fillText(t('game.settings.displayName'), CANVAS_WIDTH / 2, colorStartY + 80);
 
     // Display current name
     const currentName = this.player.displayName || '';
     this.ctx.font = '16px Arial';
     this.ctx.fillStyle = '#aaaaaa';
-    this.ctx.fillText(currentName, CANVAS_WIDTH / 2, startY + buttonHeight + 60);
+    this.ctx.fillText(currentName, CANVAS_WIDTH / 2, colorStartY + 110);
 
     // Draw change name button
     const changeNameBtnWidth = 150;
     const changeNameBtnHeight = 30;
     const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
-    const changeNameBtnY = startY + buttonHeight + 80;
+    const changeNameBtnY = colorStartY + 130;
 
-    this.ctx.fillStyle = 'rgba(0, 100, 200, 0.8)';
+    this.ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
     this.ctx.fillRect(changeNameBtnX, changeNameBtnY, changeNameBtnWidth, changeNameBtnHeight);
     this.ctx.strokeStyle = 'white';
     this.ctx.lineWidth = 2;
     this.ctx.strokeRect(changeNameBtnX, changeNameBtnY, changeNameBtnWidth, changeNameBtnHeight);
 
     this.ctx.fillStyle = 'white';
-    this.ctx.font = '16px Arial';
+    this.ctx.font = '14px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(t('game.settings.changeName'), changeNameBtnX + changeNameBtnWidth / 2, changeNameBtnY + changeNameBtnHeight / 2);
-
-    // Draw close instructions
-    this.ctx.font = '14px Arial';
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = 'white';
-    this.ctx.fillText(t('game.settings.close'), CANVAS_WIDTH / 2, popupY + popupHeight - 30);
   }
   
+  // Show a dialog to change the display name
+  showDisplayNameDialog(): void {
+    // Create dialog overlay
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    overlay.style.display = 'flex';
+    overlay.style.justifyContent = 'center';
+    overlay.style.alignItems = 'center';
+    overlay.style.zIndex = '1000';
+    
+    // Create dialog box
+    const dialog = document.createElement('div');
+    dialog.style.width = '300px';
+    dialog.style.padding = '20px';
+    dialog.style.backgroundColor = '#333';
+    dialog.style.borderRadius = '5px';
+    dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    
+    // Create title
+    const title = document.createElement('h2');
+    title.textContent = t('game.settings.changeName');
+    title.style.color = 'white';
+    title.style.marginTop = '0';
+    title.style.textAlign = 'center';
+    
+    // Create input field
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = t('game.settings.enterName');
+    input.value = this.player.displayName || '';
+    input.style.width = '100%';
+    input.style.padding = '8px';
+    input.style.marginTop = '15px';
+    input.style.marginBottom = '15px';
+    input.style.boxSizing = 'border-box';
+    input.style.backgroundColor = '#444';
+    input.style.color = 'white';
+    input.style.border = '1px solid #555';
+    input.style.borderRadius = '3px';
+    input.style.fontSize = '16px';
+    
+    // Create button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.justifyContent = 'space-between';
+    
+    // Create save button
+    const saveButton = document.createElement('button');
+    saveButton.textContent = t('game.settings.save');
+    saveButton.style.padding = '10px 20px';
+    saveButton.style.backgroundColor = '#2980b9';
+    saveButton.style.color = 'white';
+    saveButton.style.border = 'none';
+    saveButton.style.borderRadius = '3px';
+    saveButton.style.cursor = 'pointer';
+    saveButton.style.fontSize = '16px';
+    saveButton.style.width = '100%';
+    saveButton.style.marginTop = '10px';
+    
+    // Create cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.padding = '10px 20px';
+    cancelButton.style.backgroundColor = '#7f8c8d';
+    cancelButton.style.color = 'white';
+    cancelButton.style.border = 'none';
+    cancelButton.style.borderRadius = '3px';
+    cancelButton.style.cursor = 'pointer';
+    cancelButton.style.fontSize = '16px';
+    cancelButton.style.width = '100%';
+    cancelButton.style.marginTop = '10px';
+    
+    // Add event listeners
+    saveButton.addEventListener('click', () => {
+      const newName = input.value.trim();
+      if (newName) {
+        this.player.setDisplayName(newName);
+        document.body.removeChild(overlay);
+      } else {
+        // Highlight the input field if empty
+        input.style.border = '2px solid #e74c3c';
+        setTimeout(() => {
+          input.style.border = '1px solid #555';
+        }, 1000);
+      }
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      document.body.removeChild(overlay);
+    });
+    
+    // Handle Enter key press
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveButton.click();
+      }
+    });
+    
+    // Add elements to the dialog
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(saveButton);
+    dialog.appendChild(title);
+    dialog.appendChild(input);
+    dialog.appendChild(buttonContainer);
+    overlay.appendChild(dialog);
+    
+    // Add dialog to the document
+    document.body.appendChild(overlay);
+    
+    // Focus the input field
+    setTimeout(() => {
+      input.focus();
+      input.select(); // Select the default text to make it easier to replace
+    }, 100);
+  }
+
   // Show a welcome dialog for new players to set their display name
   showWelcomeNameDialog(): void {
     // Create dialog overlay

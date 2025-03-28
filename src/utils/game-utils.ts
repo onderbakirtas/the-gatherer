@@ -1,4 +1,4 @@
-import { ref, set } from 'firebase/database';
+import { ref, set, get } from 'firebase/database';
 import { ASSET_PATHS } from '../constants/game';
 import { db } from './firebase';
 
@@ -71,4 +71,34 @@ function updatePosition(x: number, y: number) {
   });
 }
 
-export { grassImage, cliffImage, createDefaultGrassTexture, createDefaultCliffTexture, updatePosition };
+// Update player color in Firebase
+function updatePlayerColor(playerId: string, color: string): void {
+  if (!playerId) return;
+  
+  const playerRef = ref(db, `players/${playerId}`);
+  
+  // Sadece renk bilgisini güncelle, diğer verileri değiştirme
+  get(playerRef).then((snapshot) => {
+    if (snapshot.exists()) {
+      const playerData = snapshot.val();
+      
+      // Mevcut verileri koru, sadece rengi güncelle
+      set(playerRef, {
+        ...playerData,
+        color: color,
+        lastUpdated: Date.now()
+      });
+    }
+  }).catch(error => {
+    console.error("Error updating player color:", error);
+  });
+}
+
+export {
+  grassImage,
+  cliffImage,
+  createDefaultGrassTexture,
+  createDefaultCliffTexture,
+  updatePosition,
+  updatePlayerColor
+};

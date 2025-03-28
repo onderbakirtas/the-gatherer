@@ -1,5 +1,5 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, PLAYER_SIZE, PLAYER_SPEED, RESOURCE_COLORS, RESOURCE_GATHER_DISTANCE } from "../constants/game";
-import { updatePosition } from "../utils/game-utils";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, PLAYER_SIZE, PLAYER_SPEED, RESOURCE_COLORS, RESOURCE_GATHER_DISTANCE, DEFAULT_PLAYER_COLOR } from "../constants/game";
+import { updatePosition, updatePlayerColor } from "../utils/game-utils";
 import { ResourceRarity } from "../utils/types";
 import { Vector2 } from "./vector2";
 import { t } from "./language-manager";
@@ -22,12 +22,19 @@ export class Player {
     [ResourceRarity.EPIC]: 0,
     [ResourceRarity.LEGENDARY]: 0
   };
+  color: string = DEFAULT_PLAYER_COLOR;
 
   constructor(x: number, y: number, playerId: string) {
     this.position = new Vector2(x, y);
     this.playerId = playerId;
     // Initialize display name with player ID by default
     this.displayName = playerId.replace('player_', '');
+    
+    // Get saved color from localStorage
+    const savedColor = localStorage.getItem('playerColor');
+    if (savedColor) {
+      this.color = savedColor;
+    }
     
     // Update player position in Firebase when created
     this.updatePlayerPositionInDB();
@@ -44,6 +51,7 @@ export class Player {
         y: this.position.y
       },
       displayName: this.displayName,
+      color: this.color,
       id: this.playerId, // Store the ID explicitly in the database
       lastUpdated: Date.now()
     });
@@ -78,6 +86,7 @@ export class Player {
             y: this.position.y
           },
           displayName: this.displayName,
+          color: this.color,
           id: this.playerId,
           lastUpdated: Date.now()
         });
@@ -151,7 +160,7 @@ export class Player {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = '#3498db';
+    ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, PLAYER_SIZE, 0, Math.PI * 2);
     ctx.fill();
@@ -392,5 +401,14 @@ export class Player {
       inventoryX + 35,
       inventoryY + 140
     );
+  }
+
+  // Oyuncu rengini değiştir ve kaydet
+  setColor(color: string): void {
+    this.color = color;
+    localStorage.setItem('playerColor', color);
+    
+    // Firebase'e renk bilgisini kaydet
+    updatePlayerColor(this.playerId, color);
   }
 }

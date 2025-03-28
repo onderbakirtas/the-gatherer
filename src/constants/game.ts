@@ -46,6 +46,21 @@ export const RESOURCE_COLORS = {
     MYTHICAL   : "#D35400",
 };
 
+// Önceden tanımlanmış oyuncu renkleri
+export const PLAYER_COLORS = [
+  { name: 'Red', value: '#e74c3c', displayName: 'Kırmızı' },
+  { name: 'Blue', value: '#3498db', displayName: 'Mavi' },
+  { name: 'Green', value: '#2ecc71', displayName: 'Yeşil' },
+  { name: 'Yellow', value: '#f1c40f', displayName: 'Sarı' },
+  { name: 'Purple', value: '#9b59b6', displayName: 'Mor' },
+  { name: 'Orange', value: '#e67e22', displayName: 'Turuncu' },
+  { name: 'Teal', value: '#1abc9c', displayName: 'Turkuaz' },
+  { name: 'Pink', value: '#e84393', displayName: 'Pembe' }
+];
+
+// Varsayılan oyuncu rengi (Mavi)
+export const DEFAULT_PLAYER_COLOR = PLAYER_COLORS[1].value;
+
 // Asset paths
 export const ASSET_PATHS = {
     GRASS: "/assets/grass.png",

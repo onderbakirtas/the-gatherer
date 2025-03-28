@@ -28,17 +28,20 @@
     "ui": {
       "controls": "Kontroller",
       "settings": "Ayarlar",
+      "inventory": "Envanter",
+      "fps": "FPS",
       "loading": "Yükleniyor..."
     },
     "settings": {
       "title": "Ayarlar",
       "language": "Dil",
+      "close": "Kapatmak için dışarı tıklayın",
       "displayName": "Görünen İsim",
       "changeName": "İsim Değiştir",
-      "enterName": "Görünen isminizi girin",
-      "welcome": "Hoş geldiniz! Lütfen görünecek isminizi girin.",
+      "enterName": "İsminizi girin",
+      "welcome": "The Gatherer'a hoş geldiniz! Lütfen görünen isminizi girin:",
       "save": "Kaydet",
-      "close": "Kapatmak için bu açılır pencerenin dışına tıklayın"
+      "playerColor": "Oyuncu Rengi"
     },
     "gathering": "Toplanıyor",
     "level": "Seviye",
