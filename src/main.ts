@@ -144,7 +144,7 @@ let otherPlayersMovement: Record<string, {
 
 // Update other players' positions based on their movement state
 function updateOtherPlayersPositions(deltaTime: number) {
-  Object.entries(otherPlayersMovement).forEach(([otherPlayerId, movementData]) => {
+  Object.entries(otherPlayersMovement).forEach(([_, movementData]) => {
     if (!movementData.isMoving || !movementData.targetPosition) return;
     
     const currentPos = movementData.currentPosition;
