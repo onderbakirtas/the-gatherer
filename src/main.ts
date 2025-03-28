@@ -5,7 +5,6 @@ import {
   CANVAS_HEIGHT,
   MAP_WIDTH,
   MAP_HEIGHT,
-  PLAYER_SPEED,
   PLAYER_SIZE,
   BORDER_WIDTH,
   MINIMAP_SIZE,
@@ -14,920 +13,152 @@ import {
   RESOURCE_GATHER_DISTANCE,
   MAX_TIER3_RESOURCES,
   MAX_TIER2_RESOURCES,
-  RESOURCE_SHARD_VALUES,
-  RESOURCE_COLORS,
-  ASSET_PATHS,
-  DEFAULT_MAP_ID
+  ASSET_PATHS
 } from './constants/game';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import db from './utils/db';
+import { db } from './utils/firebase';
+import { ref, onValue, get } from 'firebase/database';
+import { LanguageManager, t } from './lib/language-manager';
+import { createResourceTexture } from './utils/create-resource-texture';
+import { ResourceRarity } from './utils/types';
+import { Vector2 } from './lib/vector2';
+import { Resource } from './lib/resource';
+import { cliffImage, createDefaultCliffTexture, createDefaultGrassTexture, grassImage } from './utils/game-utils';
+import { Camera } from './lib/camera';
+import { Player } from './lib/player';
+import { getTauriVersion } from '@tauri-apps/api/app';
 
 async function setup() {
   await sleep(3);
   await invoke('set_complete', { task: 'frontend' });
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  setup();
-});
+// Initialize titlebar controls for Tauri
+(async function initializeTauriControls() {
+  try {
+    // Check if running in Tauri by trying to get the Tauri version
+    const tauriVersion = await getTauriVersion();
+    if (tauriVersion) {
+      const appWindows = getCurrentWindow();
 
-const appWindows = getCurrentWindow();
+      document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
+        appWindows.minimize();
+      });
 
-document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
-  appWindows.minimize();
-});
+      document.getElementById('titlebar-close')?.addEventListener('click', () => {
+        appWindows.close();
+      });
 
-document.getElementById('titlebar-close')?.addEventListener('click', () => {
-  appWindows.close();
-});
-
-document.getElementById('titlebar-move')?.addEventListener('mousedown', e => {
-  if (e.buttons === 1) {
-    // Primary (left) button
-    appWindows.startDragging(); // Else start dragging
-  }
-});
-
-// Game assets
-const grassImage = new Image();
-grassImage.src = ASSET_PATHS.GRASS;
-
-const cliffImage = new Image();
-cliffImage.src = ASSET_PATHS.CLIFF;
-
-// Resource images
-const resourceT1Image = new Image();
-resourceT1Image.src = ASSET_PATHS.RESOURCE_T1;
-
-const resourceT2Image = new Image();
-resourceT2Image.src = ASSET_PATHS.RESOURCE_T2;
-
-const resourceT3Image = new Image();
-resourceT3Image.src = ASSET_PATHS.RESOURCE_T3;
-
-const resourceT4Image = new Image();
-resourceT4Image.src = ASSET_PATHS.RESOURCE_T4;
-
-const resourceT5Image = new Image();
-resourceT5Image.src = ASSET_PATHS.RESOURCE_T5;
-
-// Add error handlers for images
-grassImage.onerror = () => {
-  console.error('Failed to load grass texture');
-  // Create a default grass texture
-  createDefaultGrassTexture();
-};
-
-cliffImage.onerror = () => {
-  console.error('Failed to load cliff texture');
-  // Create a default cliff texture
-  createDefaultCliffTexture();
-};
-
-resourceT1Image.onerror = () => {
-  console.error('Failed to load resource T1 texture');
-  // Create a default resource T1 texture
-  createDefaultResourceT1Texture();
-};
-
-resourceT2Image.onerror = () => {
-  console.error('Failed to load resource T2 texture');
-  // Create a default resource T2 texture
-  createDefaultResourceT2Texture();
-};
-
-resourceT3Image.onerror = () => {
-  console.error('Failed to load resource T3 texture');
-  // Create a default resource T3 texture
-  createDefaultResourceT3Texture();
-};
-
-resourceT4Image.onerror = () => {
-  console.error('Failed to load resource T4 texture');
-  // Create a default resource T4 texture
-  createDefaultResourceT4Texture();
-};
-
-resourceT5Image.onerror = () => {
-  console.error('Failed to load resource T5 texture');
-  // Create a default resource T5 texture
-  createDefaultResourceT5Texture();
-};
-
-// Create default textures if loading fails
-function createDefaultGrassTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a green background
-  ctx.fillStyle = '#4CAF50';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#81C784';
-  for (let i = 0; i < 20; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 2 + Math.random() * 4;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the grass image source to this canvas
-  grassImage.src = canvas.toDataURL();
-}
-
-function createDefaultCliffTexture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a gray background
-  ctx.fillStyle = '#757575';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#616161';
-  for (let i = 0; i < 15; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 3 + Math.random() * 6;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the cliff image source to this canvas
-  cliffImage.src = canvas.toDataURL();
-}
-
-function createDefaultResourceT1Texture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a yellow background
-  ctx.fillStyle = '#F7DC6F';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#F2C464';
-  for (let i = 0; i < 15; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 3 + Math.random() * 6;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the resource T1 image source to this canvas
-  resourceT1Image.src = canvas.toDataURL();
-}
-
-function createDefaultResourceT2Texture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a blue background
-  ctx.fillStyle = '#3498db';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#2E4053';
-  for (let i = 0; i < 15; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 3 + Math.random() * 6;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the resource T2 image source to this canvas
-  resourceT2Image.src = canvas.toDataURL();
-}
-
-function createDefaultResourceT3Texture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a purple background
-  ctx.fillStyle = '#9b59b6';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#7A288A';
-  for (let i = 0; i < 15; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 3 + Math.random() * 6;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the resource T3 image source to this canvas
-  resourceT3Image.src = canvas.toDataURL();
-}
-
-function createDefaultResourceT4Texture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a orange background
-  ctx.fillStyle = '#FFC107';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#FF9900';
-  for (let i = 0; i < 15; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 3 + Math.random() * 6;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the resource T4 image source to this canvas
-  resourceT4Image.src = canvas.toDataURL();
-}
-
-function createDefaultResourceT5Texture() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-
-  // Draw a red background
-  ctx.fillStyle = '#E74C3C';
-  ctx.fillRect(0, 0, 64, 64);
-
-  // Add some texture details
-  ctx.fillStyle = '#C0392B';
-  for (let i = 0; i < 15; i++) {
-    const x = Math.random() * 64;
-    const y = Math.random() * 64;
-    const size = 3 + Math.random() * 6;
-    ctx.fillRect(x, y, size, size);
-  }
-
-  // Set the resource T5 image source to this canvas
-  resourceT5Image.src = canvas.toDataURL();
-}
-
-// Language manager for translations
-class LanguageManager {
-  private static instance: LanguageManager;
-  private translations: Record<string, any> = {};
-  private currentLanguage: string = 'tr';
-  private onLanguageChangeCallbacks: Array<() => void> = [];
-
-  private constructor() {
-    // Private constructor to enforce singleton
-  }
-
-  public static getInstance(): LanguageManager {
-    if (!LanguageManager.instance) {
-      LanguageManager.instance = new LanguageManager();
-    }
-    return LanguageManager.instance;
-  }
-
-  public async init(): Promise<void> {
-    // Load saved language preference or default to English
-    const savedLanguage = localStorage.getItem('language');
-    if (savedLanguage) {
-      this.currentLanguage = savedLanguage;
-    }
-
-    // Load translations for current language
-    await this.loadTranslations(this.currentLanguage);
-  }
-
-  public async loadTranslations(language: string): Promise<void> {
-    try {
-      const response = await fetch(`/locales/${language}/translation.json`);
-      if (!response.ok) {
-        console.error(`Failed to load translations for ${language}`);
-        // If failed and not English, try to fall back to English
-        if (language !== 'en') {
-          await this.loadTranslations('en');
+      document.getElementById('titlebar-move')?.addEventListener('mousedown', e => {
+        if (e.buttons === 1) {
+          // Primary (left) button
+          appWindows.startDragging(); // Else start dragging
         }
-        return;
-      }
-
-      this.translations = await response.json();
-      this.currentLanguage = language;
-      localStorage.setItem('language', language);
-
-      // Notify all subscribers about language change
-      this.notifyLanguageChanged();
-    } catch (error) {
-      console.error('Error loading translations:', error);
-      // If error and not English, try to fall back to English
-      if (language !== 'en') {
-        await this.loadTranslations('en');
-      }
+      });
     }
+  } catch (e) {
+    // Not running in Tauri
+    console.log('Not running in Tauri environment');
   }
+})();
 
-  public getTranslation(key: string): string {
-    // Split the key by dots to navigate the nested structure
-    const keys = key.split('.');
-    let result = this.translations;
-
-    // Navigate through the keys
-    for (const k of keys) {
-      if (result && result[k] !== undefined) {
-        result = result[k];
-      } else {
-        console.warn(`Translation key not found: ${key}`);
-        return key; // Return the key itself as fallback
-      }
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    // Check if running in Tauri by trying to get the Tauri version
+    const tauriVersion = await getTauriVersion();
+    if (tauriVersion) {
+      setup();
     }
-
-    // Return the translation or the key if not found
-    return typeof result === 'string' ? result : key;
+  } catch (e) {
+    // Not running in Tauri
+    console.log('Not running in Tauri environment');
   }
 
-  public getCurrentLanguage(): string {
-    return this.currentLanguage;
-  }
+  // Initialize the game regardless of environment
+  new Game();
+});
 
-  public onLanguageChange(callback: () => void): void {
-    this.onLanguageChangeCallbacks.push(callback);
-  }
+// Generate a unique player ID
+// Check if player ID is already in localStorage
+let playerId = localStorage.getItem('playerId');
 
-  private notifyLanguageChanged(): void {
-    for (const callback of this.onLanguageChangeCallbacks) {
-      callback();
-    }
-  }
+if (!playerId) {
+  playerId = 'player_' + Math.random().toString(36).slice(2, 9);
+  localStorage.setItem('playerId', playerId);
 }
 
-// Shorthand function for getting translations
-function t(key: string): string {
-  return LanguageManager.getInstance().getTranslation(key);
-}
+let players: Record<string, any> = {};
 
-// Game classes
-class Vector2 {
-  constructor(public x: number, public y: number) {}
+const playerRef = ref(db, `players`);
 
-  distanceTo(other: Vector2): number {
-    const dx = this.x - other.x;
-    const dy = this.y - other.y;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
+onValue(playerRef, snapshot => {
+  players = snapshot.val() || {};
+  console.log('Players updated:', players);
+});
 
-  normalize(): Vector2 {
-    const length = Math.sqrt(this.x * this.x + this.y * this.y);
-    if (length === 0) return new Vector2(0, 0);
-    return new Vector2(this.x / length, this.y / length);
-  }
-
-  multiply(scalar: number): Vector2 {
-    return new Vector2(this.x * scalar, this.y * scalar);
-  }
-}
-
-enum ResourceRarity {
-  COMMON = 0,
-  UNCOMMON = 1,
-  RARE = 2,
-  EPIC = 3,
-  LEGENDARY = 4
-}
-
-class Resource {
-  position: Vector2;
-  rarity: ResourceRarity;
-  isBeingGathered: boolean = false;
-  gatherProgress: number = 0;
-  gatherTime: number; // Time in seconds to gather this resource
-  shardValue: number;
-  isGathered: boolean = false;
-  refillTime: number; // Time in seconds until resource refills
-  refillProgress: number = 0;
-  image: HTMLImageElement;
-
-  constructor(x: number, y: number, rarity: ResourceRarity) {
-    this.position = new Vector2(x, y);
-    this.rarity = rarity;
-
-    // Set gather time based on rarity (1, 2, or 3 seconds)
-    this.gatherTime = rarity + 1;
-
-    // Assign the appropriate image based on rarity
-    switch (rarity) {
-      case ResourceRarity.COMMON:
-        this.image = resourceT1Image;
-        this.shardValue = RESOURCE_SHARD_VALUES.COMMON;
-        break;
-      case ResourceRarity.UNCOMMON:
-        this.image = resourceT2Image;
-        this.shardValue = RESOURCE_SHARD_VALUES.UNCOMMON;
-        break;
-      case ResourceRarity.RARE:
-        this.image = resourceT3Image;
-        this.shardValue = RESOURCE_SHARD_VALUES.RARE;
-        break;
-      case ResourceRarity.EPIC:
-        this.image = resourceT4Image;
-        this.shardValue = RESOURCE_SHARD_VALUES.EPIC;
-        break;
-      case ResourceRarity.LEGENDARY:
-        this.image = resourceT5Image;
-        this.shardValue = RESOURCE_SHARD_VALUES.LEGENDARY;
-        break;
-      default:
-        this.image = resourceT1Image;
-        this.shardValue = RESOURCE_SHARD_VALUES.COMMON;
+function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, currentPlayerId: string) {
+  // Skip if no players data
+  if (!players) return;
+  
+  // Generate consistent colors for each player
+  const getPlayerColor = (playerId: string) => {
+    // Use a simple hash function to generate a consistent color based on player ID
+    let hash = 0;
+    for (let i = 0; i < playerId.length; i++) {
+      hash = playerId.charCodeAt(i) + ((hash << 5) - hash);
     }
-
-    // Set refill time equal to shard value (in seconds)
-    this.refillTime = this.shardValue;
-  }
-
-  getColor(): string {
-    return getResourceColor(this.rarity);
-  }
-
-  startGathering(): void {
-    if (this.isGathered) return; // Can't gather if already gathered
-    this.isBeingGathered = true;
-    this.gatherProgress = 0;
-  }
-
-  stopGathering(): void {
-    this.isBeingGathered = false;
-    this.gatherProgress = 0;
-  }
-
-  updateGathering(deltaTime: number): boolean {
-    if (!this.isBeingGathered || this.isGathered) return false;
-
-    this.gatherProgress += deltaTime;
-
-    // Return true if gathering is complete
-    if (this.gatherProgress >= this.gatherTime) {
-      this.isBeingGathered = false;
-      this.isGathered = true;
-      this.gatherProgress = 0;
-      return true;
-    }
-
-    return false;
-  }
-
-  updateRefill(deltaTime: number): void {
-    if (!this.isGathered) return;
-
-    this.refillProgress += deltaTime;
-
-    // Check if resource should refill
-    if (this.refillProgress >= this.refillTime) {
-      this.isGathered = false;
-      this.refillProgress = 0;
-    }
-  }
-
-  // Check if player is close enough to gather this resource
-  isPlayerInRange(playerPosition: Vector2): boolean {
-    return this.canBeGathered() && this.position.distanceTo(playerPosition) <= RESOURCE_GATHER_DISTANCE;
-  }
-
-  canBeGathered(): boolean {
-    return !this.isGathered && !this.isBeingGathered;
-  }
-
-  draw(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, playerPosition: Vector2): void {
-    // Convert world position to screen position
-    const screenX = this.position.x - cameraOffset.x;
-    const screenY = this.position.y - cameraOffset.y;
-
-    // Check if resource is visible on screen
-    if (
-      screenX + RESOURCE_SIZE < 0 ||
-      screenX - RESOURCE_SIZE > CANVAS_WIDTH ||
-      screenY + RESOURCE_SIZE < 0 ||
-      screenY - RESOURCE_SIZE > CANVAS_HEIGHT
-    ) {
-      return;
-    }
-
-    // Check if resource is gathered
-    if (!this.isGathered) {
-      // Save the current context state
-      ctx.save();
-
-      // Add glow effect based on resource rarity
-      const isInRange = this.isPlayerInRange(playerPosition);
-      const glowColor = this.getColor();
-      const glowIntensity = isInRange ? 20 : 10; // More intense glow when in range
-
-      // Apply shadow for glow effect
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = glowIntensity;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-
-      // Draw the resource image
-      ctx.drawImage(this.image, screenX - RESOURCE_SIZE / 2, screenY - RESOURCE_SIZE / 2, RESOURCE_SIZE, RESOURCE_SIZE);
-
-      // Restore the context state
-      ctx.restore();
-
-      // Draw gathering progress if being gathered
-      if (this.isBeingGathered) {
-        const progressPercentage = this.gatherProgress / this.gatherTime;
-
-        // Draw progress bar background
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(screenX - RESOURCE_SIZE / 2, screenY + RESOURCE_SIZE / 2 + 5, RESOURCE_SIZE, 5);
-
-        // Draw progress bar
-        ctx.fillStyle = this.getColor();
-        ctx.fillRect(
-          screenX - RESOURCE_SIZE / 2,
-          screenY + RESOURCE_SIZE / 2 + 5,
-          RESOURCE_SIZE * progressPercentage,
-          5
-        );
-      }
-    }
-
-    // Draw refill progress if gathered
-    if (this.isGathered) {
-      ctx.save();
-
-      // Draw semi-transparent image
-      ctx.globalAlpha = 0.5;
-      ctx.drawImage(this.image, screenX - RESOURCE_SIZE / 2, screenY - RESOURCE_SIZE / 2, RESOURCE_SIZE, RESOURCE_SIZE);
-
-      // Reset alpha
-      ctx.globalAlpha = 1.0;
-
-      // Draw refill timer
-      ctx.fillStyle = 'white';
-      ctx.font = '16px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      const timeLeft = Math.ceil(this.refillTime - this.refillProgress);
-      ctx.fillText(timeLeft.toString(), screenX, screenY);
-
-      ctx.restore();
-    }
-  }
-
-  drawOnMinimap(
-    ctx: CanvasRenderingContext2D,
-    minimapX: number,
-    minimapY: number,
-    scaleX: number,
-    scaleY: number
-  ): void {
-    const resourceMinimapX = minimapX + this.position.x * scaleX;
-    const resourceMinimapY = minimapY + this.position.y * scaleY;
-
-    // Only draw on minimap if not gathered
-    if (!this.isGathered) {
-      // Draw a small dot for the resource
-      ctx.fillStyle = this.getColor();
-      ctx.beginPath();
-      ctx.arc(resourceMinimapX, resourceMinimapY, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-function getResourceColor(rarity: ResourceRarity): string {
-  switch (rarity) {
-    case ResourceRarity.COMMON:
-      return RESOURCE_COLORS.COMMON;
-    case ResourceRarity.UNCOMMON:
-      return RESOURCE_COLORS.UNCOMMON;
-    case ResourceRarity.RARE:
-      return RESOURCE_COLORS.RARE;
-    case ResourceRarity.EPIC:
-      return RESOURCE_COLORS.EPIC;
-    case ResourceRarity.LEGENDARY:
-      return RESOURCE_COLORS.LEGENDARY;
-    default:
-      return RESOURCE_COLORS.COMMON;
-  }
-}
-
-class Player {
-  position: Vector2;
-  targetPosition: Vector2 | null = null;
-  isMoving = false;
-  currentResource: Resource | null = null;
-  isGathering = false;
-  inventory: { [key in ResourceRarity]: number } = {
-    [ResourceRarity.COMMON]: 0,
-    [ResourceRarity.UNCOMMON]: 0,
-    [ResourceRarity.RARE]: 0,
-    [ResourceRarity.EPIC]: 0,
-    [ResourceRarity.LEGENDARY]: 0
+    
+    // Generate RGB values
+    const r = Math.abs((hash & 0xFF0000) >> 16);
+    const g = Math.abs((hash & 0x00FF00) >> 8);
+    const b = Math.abs(hash & 0x0000FF);
+    
+    return `rgb(${r}, ${g}, ${b})`;
   };
-
-  constructor(x: number, y: number) {
-    this.position = new Vector2(x, y);
-  }
-
-  setTarget(x: number, y: number) {
-    // Don't allow movement while gathering
-    if (this.isGathering) return;
-
-    this.targetPosition = new Vector2(x, y);
-    this.isMoving = true;
-
-    // Stop gathering if player moves
-    if (this.currentResource) {
-      this.currentResource.stopGathering();
-      this.currentResource = null;
-      this.isGathering = false;
-    }
-  }
-
-  update(deltaTime: number) {
-    // Don't update movement if gathering
-    if (this.isGathering) return;
-
-    if (!this.isMoving || !this.targetPosition) return;
-
-    const distance = this.position.distanceTo(this.targetPosition);
-
-    if (distance < 5) {
-      // Player has reached the target
-      this.position = this.targetPosition;
-      this.isMoving = false;
-      this.targetPosition = null;
+  
+  // Draw each player
+  Object.entries(players).forEach(([id, playerData]) => {
+    if (!playerData || !playerData.position) return;
+    
+    const { x, y } = playerData.position;
+    
+    // Skip drawing current player (they're drawn separately)
+    if (id === currentPlayerId) return;
+    
+    // Calculate screen position
+    const screenX = x - cameraOffset.x;
+    const screenY = y - cameraOffset.y;
+    
+    // Only draw if on screen
+    if (screenX < -PLAYER_SIZE || screenX > CANVAS_WIDTH + PLAYER_SIZE || 
+        screenY < -PLAYER_SIZE || screenY > CANVAS_HEIGHT + PLAYER_SIZE) {
       return;
     }
-
-    // Calculate direction vector
-    const direction = new Vector2(
-      this.targetPosition.x - this.position.x,
-      this.targetPosition.y - this.position.y
-    ).normalize();
-
-    // Calculate movement distance for this frame
-    const moveDistance = PLAYER_SPEED * deltaTime;
-
-    // Calculate new position
-    const moveVector = direction.multiply(moveDistance);
-    this.position.x += moveVector.x;
-    this.position.y += moveVector.y;
-  }
-
-  draw(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = '#3498db';
+    
+    // Draw player circle with unique color
+    const playerColor = getPlayerColor(id);
+    ctx.fillStyle = playerColor;
     ctx.beginPath();
-    ctx.arc(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, PLAYER_SIZE, 0, Math.PI * 2);
+    ctx.arc(screenX, screenY, PLAYER_SIZE, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#2980b9';
+    
+    // Draw border
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.lineWidth = 2;
     ctx.stroke();
-  }
-
-  startGatheringResource(resource: Resource): void {
-    // Stop movement when gathering
-    this.isMoving = false;
-    this.targetPosition = null;
-
-    this.currentResource = resource;
-    this.isGathering = true;
-    resource.startGathering();
-  }
-
-  updateResourceGathering(deltaTime: number): void {
-    if (!this.currentResource) {
-      this.isGathering = false;
-      return;
-    }
-
-    // Check if player is still in range of the resource
-    const distance = this.position.distanceTo(this.currentResource.position);
-
-    if (distance > RESOURCE_GATHER_DISTANCE) {
-      this.currentResource.stopGathering();
-      this.currentResource = null;
-      this.isGathering = false;
-      return;
-    }
-
-    // Update gathering progress
-    const isComplete = this.currentResource.updateGathering(deltaTime);
-
-    // If gathering is complete, add to inventory
-    if (isComplete) {
-      this.inventory[this.currentResource.rarity]++;
-      this.currentResource = null;
-      this.isGathering = false;
-    }
-  }
-
-  drawGatheringUI(ctx: CanvasRenderingContext2D): void {
-    if (!this.currentResource || !this.isGathering) return;
-
-    const progressBarWidth = 250;
-    const progressBarHeight = 20;
-    const progressBarX = (CANVAS_WIDTH - progressBarWidth) / 2;
-    const progressBarY = CANVAS_HEIGHT - 60;
-
-    // Create a progress bar similar to the image
-    const iconSize = 50;
-    const barX = progressBarX - iconSize; // Adjust X to accommodate the icon
-    const barY = progressBarY - 15;
-
-    // Draw the icon background (square with rounded corners)
-    ctx.fillStyle = '#333';
-    ctx.beginPath();
-    ctx.roundRect(barX, barY, iconSize, iconSize, 10);
-    ctx.fill();
-
-    // Draw the resource image with glow effect
-    ctx.save();
-    // Add glow effect based on resource rarity
-    ctx.shadowColor = this.currentResource.getColor();
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Draw the resource image
-    ctx.drawImage(this.currentResource.image, barX + 5, barY + 5, iconSize - 10, iconSize - 10);
-    ctx.restore();
-
-    // Draw progress bar background (dark gradient)
-    const gradient = ctx.createLinearGradient(
-      progressBarX,
-      progressBarY,
-      progressBarX + progressBarWidth,
-      progressBarY
-    );
-    gradient.addColorStop(0, '#333');
-    gradient.addColorStop(1, '#222');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.roundRect(progressBarX + 5, progressBarY, progressBarWidth, progressBarHeight, 3);
-    ctx.fill();
-
-    // Draw progress
-    const progressPercentage = this.currentResource.gatherProgress / this.currentResource.gatherTime;
-
-    // Create gradient for the progress fill
-    const progressGradient = ctx.createLinearGradient(
-      progressBarX,
-      progressBarY,
-      progressBarX,
-      progressBarY + progressBarHeight
-    );
-    progressGradient.addColorStop(0, '#4CAF50'); // Lighter green
-    progressGradient.addColorStop(1, '#2E7D32'); // Darker green
-
-    ctx.fillStyle = progressGradient;
-    ctx.beginPath();
-    ctx.roundRect(progressBarX + 5, progressBarY, progressBarWidth * progressPercentage, progressBarHeight, 3);
-    ctx.fill();
-
-    // Draw metallic border
-    ctx.strokeStyle = '#999';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(progressBarX + 5, progressBarY, progressBarWidth, progressBarHeight, 3);
-    ctx.stroke();
-  }
-
-  drawInventory(ctx: CanvasRenderingContext2D): void {
-    const inventoryX = CANVAS_WIDTH - 160;
-    const inventoryY = 50;
-
-    // Draw inventory background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(inventoryX, inventoryY, 150, 150);
-
-    // Draw inventory border
-    ctx.strokeStyle = 'white';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(inventoryX, inventoryY, 150, 150);
-
-    // Draw inventory title
+    
+    // Draw player ID above
     ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(t('game.inventory'), inventoryX + 75, inventoryY + 20);
-
-    // Draw inventory items
-    ctx.textAlign = 'left';
-    const iconSize = 20;
-
-    // Common resources (T1)
-    ctx.save();
-    // Add glow effect
-    ctx.shadowColor = RESOURCE_COLORS.COMMON;
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    // Draw the resource image
-    ctx.drawImage(resourceT1Image, inventoryX + 10, inventoryY + 30, iconSize, iconSize);
-    ctx.restore();
-
-    ctx.fillStyle = 'white';
-    ctx.fillText(
-      `${t('game.resources.common')}: ${this.inventory[ResourceRarity.COMMON]}`,
-      inventoryX + 35,
-      inventoryY + 44
-    );
-
-    // Uncommon resources (T2)
-    ctx.save();
-    // Add glow effect
-    ctx.shadowColor = RESOURCE_COLORS.UNCOMMON;
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    // Draw the resource image
-    ctx.drawImage(resourceT2Image, inventoryX + 10, inventoryY + 54, iconSize, iconSize);
-    ctx.restore();
-
-    ctx.fillStyle = 'white';
-    ctx.fillText(
-      `${t('game.resources.uncommon')}: ${this.inventory[ResourceRarity.UNCOMMON]}`,
-      inventoryX + 35,
-      inventoryY + 68
-    );
-
-    // Rare resources (T3)
-    ctx.save();
-    // Add glow effect
-    ctx.shadowColor = RESOURCE_COLORS.RARE;
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    // Draw the resource image
-    ctx.drawImage(resourceT3Image, inventoryX + 10, inventoryY + 78, iconSize, iconSize);
-    ctx.restore();
-
-    ctx.fillStyle = 'white';
-    ctx.fillText(
-      `${t('game.resources.rare')}: ${this.inventory[ResourceRarity.RARE]}`,
-      inventoryX + 35,
-      inventoryY + 92
-    );
-
-    // Epic resources (T4)
-    ctx.save();
-    // Add glow effect
-    ctx.shadowColor = RESOURCE_COLORS.EPIC;
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    // Draw the resource image
-    ctx.drawImage(resourceT4Image, inventoryX + 10, inventoryY + 102, iconSize, iconSize);
-    ctx.restore();
-
-    ctx.fillStyle = 'white';
-    ctx.fillText(
-      `${t('game.resources.epic')}: ${this.inventory[ResourceRarity.EPIC]}`,
-      inventoryX + 35,
-      inventoryY + 116
-    );
-
-    // Legendary resources (T5)
-    ctx.save();
-    // Add glow effect
-    ctx.shadowColor = RESOURCE_COLORS.LEGENDARY;
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    // Draw the resource image
-    ctx.drawImage(resourceT5Image, inventoryX + 10, inventoryY + 126, iconSize, iconSize);
-    ctx.restore();
-
-    ctx.fillStyle = 'white';
-    ctx.fillText(
-      `${t('game.resources.legendary')}: ${this.inventory[ResourceRarity.LEGENDARY]}`,
-      inventoryX + 35,
-      inventoryY + 140
-    );
-  }
-}
-
-class Camera {
-  constructor(public position: Vector2) {}
-
-  update(target: Vector2) {
-    // Camera follows the target (player)
-    this.position = target;
-  }
-
-  getOffset(): Vector2 {
-    return new Vector2(this.position.x - CANVAS_WIDTH / 2, this.position.y - CANVAS_HEIGHT / 2);
-  }
+    ctx.textBaseline = 'bottom';
+    
+    // Draw text with outline for better visibility
+    ctx.strokeText(id.substring(0, 8), screenX, screenY - PLAYER_SIZE - 5);
+    ctx.fillText(id.substring(0, 8), screenX, screenY - PLAYER_SIZE - 5);
+  });
 }
 
 class Game {
@@ -956,7 +187,7 @@ class Game {
     this.languageManager = LanguageManager.getInstance();
 
     // Initialize player at the center of the map
-    this.player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2);
+    this.player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2, playerId || 'unknown_player');
     this.camera = new Camera(this.player.position);
 
     // Set up event listeners
@@ -988,31 +219,56 @@ class Game {
     this.resources = [];
 
     try {
-      const mapsResult = await db.queryOnce({
-        maps: {
-          $: {
-            where: {
-              id: DEFAULT_MAP_ID
-            }
-          }
-        }
-      });
+      const mapsRef = ref(db, 'maps');
 
-      const dbResources = mapsResult.data?.maps?.find(map => map.id === DEFAULT_MAP_ID)?.resources;
+      const dbResources = await get(mapsRef);
 
-      if (dbResources && Array.isArray(dbResources)) {
-        dbResources.forEach((resource: { x: number; y: number; rarity: number }) => {
+      const mapData = dbResources.val();
+
+      const mapResources = mapData.resources.locations;
+
+      if (mapResources && Array.isArray(mapResources)) {
+        mapResources.forEach((resource: { x: number; y: number; rarity: number }) => {
           if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
             const newResource = new Resource(resource.x, resource.y, resource.rarity);
-
             this.resources.push(newResource);
           }
         });
-
-        console.log(`Loaded ${this.resources.length} resources from DB`);
-      } else {
-        throw new Error('Invalid JSON format');
       }
+
+      // const mapsResult = await db.queryOnce({
+      //   maps: {
+      //     $: {
+      //       where: {
+      //         id: DEFAULT_MAP_ID
+      //       }
+      //     }
+      //   }
+      // });
+
+      // const dbResources = mapsResult.data?.maps?.find(map => map.id === DEFAULT_MAP_ID)?.resources;
+
+      // if (result && result.resources && Array.isArray(result.resources)) {
+      //   // result.forEach((resource: { x: number; y: number; rarity: number }) => {
+      //   //   if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
+      //   //     const newResource = new Resource(resource.x, resource.y, resource.rarity);
+
+      //   //     this.resources.push(newResource);
+      //   //   }
+      //   // });
+
+      //   result.resources.forEach((resource: { x: number; y: number; rarity: number }) => {
+      //     if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
+      //       const newResource = new Resource(resource.x, resource.y, resource.rarity);
+
+      //       this.resources.push(newResource);
+      //     }
+      //   });
+
+      //   console.log(`Loaded ${this.resources.length} resources from DB`);
+      // } else {
+      //   throw new Error('Invalid JSON format');
+      // }
     } catch (error) {
       console.error('Error loading resources from DB:', error);
       this.generateDefaultResources();
@@ -1124,26 +380,31 @@ class Game {
       onAssetLoad();
     };
 
+    const resourceT1Image = new Image();
     resourceT1Image.onload = () => {
       console.log('Resource T1 texture loaded');
       onAssetLoad();
     };
 
+    const resourceT2Image = new Image();
     resourceT2Image.onload = () => {
       console.log('Resource T2 texture loaded');
       onAssetLoad();
     };
 
+    const resourceT3Image = new Image();
     resourceT3Image.onload = () => {
       console.log('Resource T3 texture loaded');
       onAssetLoad();
     };
 
+    const resourceT4Image = new Image();
     resourceT4Image.onload = () => {
       console.log('Resource T4 texture loaded');
       onAssetLoad();
     };
 
+    const resourceT5Image = new Image();
     resourceT5Image.onload = () => {
       console.log('Resource T5 texture loaded');
       onAssetLoad();
@@ -1460,6 +721,9 @@ class Game {
     if (this.lastClickPosition) {
       this.drawTargetCross(this.lastClickPosition, cameraOffset);
     }
+
+    // Draw other players
+    drawPlayers(this.ctx, cameraOffset, playerId || '');
 
     // Draw player
     this.player.draw(this.ctx);
@@ -1935,7 +1199,56 @@ class Game {
   }
 }
 
-// Initialize the game when the DOM is loaded
-window.addEventListener('DOMContentLoaded', () => {
-  new Game();
-});
+// Resource images
+const resourceT1Image = new Image();
+resourceT1Image.src = ASSET_PATHS.RESOURCE_T1;
+
+const resourceT2Image = new Image();
+resourceT2Image.src = ASSET_PATHS.RESOURCE_T2;
+
+const resourceT3Image = new Image();
+resourceT3Image.src = ASSET_PATHS.RESOURCE_T3;
+
+const resourceT4Image = new Image();
+resourceT4Image.src = ASSET_PATHS.RESOURCE_T4;
+
+const resourceT5Image = new Image();
+resourceT5Image.src = ASSET_PATHS.RESOURCE_T5;
+
+// Add error handlers for images
+grassImage.onerror = () => {
+  console.error('Failed to load grass texture');
+  // Create a default grass texture
+  createDefaultGrassTexture();
+};
+
+cliffImage.onerror = () => {
+  console.error('Failed to load cliff texture');
+  // Create a default cliff texture
+  createDefaultCliffTexture();
+};
+
+resourceT1Image.onerror = () => {
+  console.error('Failed to load resource T1 texture');
+  createResourceTexture('#F7DC6F', '#F2C464', resourceT1Image);
+};
+
+resourceT2Image.onerror = () => {
+  console.error('Failed to load resource T2 texture');
+  createResourceTexture('#3498db', '#2E4053', resourceT2Image);
+};
+
+resourceT3Image.onerror = () => {
+  console.error('Failed to load resource T3 texture');
+  createResourceTexture('#9b59b6', '#7A288A', resourceT3Image);
+};
+
+resourceT4Image.onerror = () => {
+  console.error('Failed to load resource T4 texture');
+  createResourceTexture('#FFC107', '#FF9900', resourceT4Image);
+};
+
+resourceT5Image.onerror = () => {
+  console.error('Failed to load resource T5 texture');
+  createResourceTexture('#E74C3C', '#C0392B', resourceT5Image);
+};

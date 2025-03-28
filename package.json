@@ -16,7 +16,8 @@
   "dependencies": {
     "@instantdb/core": "^0.17.32",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "firebase": "^11.5.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
@@ -25,7 +26,11 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@firebase/util",
       "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "protobufjs"
     ]
   }
 }

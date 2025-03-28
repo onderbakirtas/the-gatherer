@@ -12,7 +12,7 @@ export const PLAYER_SIZE = 10;
 export const BORDER_WIDTH = 50;
 
 // UI settings
-export const MINIMAP_SIZE = 150; // Size of the minimap
+export const MINIMAP_SIZE = 120; // Size of the minimap
 export const MINIMAP_PADDING = 10; // Padding from the edge of the screen
 
 // Resource settings
