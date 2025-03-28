@@ -867,16 +867,15 @@ class Game {
 
   // Update cursor based on what's under it
   updateMouseCursor() {
-    // Get the mouse position
+    // Check if player is already moving
+    if (this.player.isMoving) {
+      this.canvas.style.cursor = 'not-allowed';
+      return;
+    }
+
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = this.lastMouseX - rect.left;
     const mouseY = this.lastMouseY - rect.top;
-
-    // Check if mouse is over UI buttons
-    if (this.isPointInControlsButton(mouseX, mouseY) || this.isPointInSettingsButton(mouseX, mouseY)) {
-      this.canvas.style.cursor = 'pointer';
-      return;
-    }
 
     // Convert to world coordinates
     const cameraOffset = this.camera.getOffset();

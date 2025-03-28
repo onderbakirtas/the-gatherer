@@ -1,5 +1,5 @@
 import { CANVAS_HEIGHT, CANVAS_WIDTH, PLAYER_SIZE, PLAYER_SPEED, RESOURCE_COLORS, RESOURCE_GATHER_DISTANCE, DEFAULT_PLAYER_COLOR } from "../constants/game";
-import { updatePosition, updatePlayerColor } from "../utils/game-utils";
+import { updatePlayerColor } from "../utils/game-utils";
 import { ResourceRarity } from "../utils/types";
 import { Vector2 } from "./vector2";
 import { t } from "./language-manager";
@@ -50,6 +50,11 @@ export class Player {
         x: this.position.x,
         y: this.position.y
       },
+      targetPosition: this.targetPosition ? {
+        x: this.targetPosition.x,
+        y: this.targetPosition.y
+      } : null,
+      isMoving: this.isMoving,
       displayName: this.displayName,
       color: this.color,
       id: this.playerId, // Store the ID explicitly in the database
@@ -102,14 +107,15 @@ export class Player {
   setTarget(x: number, y: number) {
     // Don't allow movement while gathering
     if (this.isGathering) return;
+    
+    // Don't allow changing direction while already moving
+    if (this.isMoving) return;
 
     this.targetPosition = new Vector2(x, y);
-    
-    // Send the target position to the database
-    // Other clients will use this to show where the player is heading
-    updatePosition(x, y);
-    
     this.isMoving = true;
+
+    // Update the database with the new target position
+    this.updatePlayerPositionInDB();
 
     // Stop gathering if player moves
     if (this.currentResource) {
