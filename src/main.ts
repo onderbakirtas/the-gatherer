@@ -117,6 +117,10 @@ let lastOtherPlayersUpdateTime = performance.now();
 // Store the most recent delta time for consistent movement calculations
 let lastDeltaTime = 1/60; // Default to 60 FPS
 
+// Global değişken olarak son güncelleme zamanını tutalım
+let lastFirebaseUpdateTime = 0;
+const FIREBASE_UPDATE_THROTTLE = 500; // ms cinsinden minimum güncelleme aralığı
+
 // Set up player tracking
 const playerRef = ref(db, `players`);
 
@@ -157,10 +161,15 @@ onValue(playerRef, snapshot => {
   
   // Update the game UI if the game instance is available
   if (gameInstance) {
-    // Force a redraw to show updated player positions
-    requestAnimationFrame(() => {
-      if (gameInstance) gameInstance.gameLoop();
-    });
+    // Çok sık yeniden çizim yapmayı önlemek için throttling uygulayalım
+    const currentTime = Date.now();
+    if (currentTime - lastFirebaseUpdateTime > FIREBASE_UPDATE_THROTTLE) {
+      lastFirebaseUpdateTime = currentTime;
+      // Force a redraw to show updated player positions
+      requestAnimationFrame(() => {
+        if (gameInstance) gameInstance.gameLoop();
+      });
+    }
   }
 });
 
@@ -171,29 +180,56 @@ onValue(resourcesRef, snapshot => {
   
   // Update local resources with data from the database if game instance exists
   if (gameInstance) {
-    Object.entries(resourcesData).forEach(([resourceId, resourceData]: [string, any]) => {
+    let resourcesChanged = false;
+    
+    Object.entries(resourcesData).forEach(([id, resourceData]: [string, any]) => {
       // Find the corresponding local resource
       if (gameInstance) {
-        const localResource = gameInstance.resources.find((r: Resource) => r.resourceId === resourceId);
+        const localResource = gameInstance.resources.find((r: Resource) => r.resourceId === id);
         
         if (localResource) {
-          // Update resource state
-          localResource.isGathered = resourceData.isGathered || false;
+          // Update resource state only if there's a change
+          if (localResource.isGathered !== (resourceData.isGathered || false)) {
+            localResource.isGathered = resourceData.isGathered || false;
+            resourcesChanged = true;
+          }
           
           // Update gathering state if not being gathered by the current player
-          if (resourceData.isBeingGathered && resourceData.gatheringPlayerId !== playerId) {
+          const isBeingGatheredByOther = resourceData.isBeingGathered && 
+                                        resourceData.gatheringPlayerId !== playerId;
+          
+          if (isBeingGatheredByOther && 
+              (!localResource.isBeingGathered || 
+               localResource.gatheringPlayerId !== resourceData.gatheringPlayerId)) {
+            
             localResource.isBeingGathered = true;
             localResource.gatheringPlayerId = resourceData.gatheringPlayerId;
             localResource.gatheringPlayerName = resourceData.gatheringPlayerName || 'Another player';
+            resourcesChanged = true;
+          } else if (!isBeingGatheredByOther && localResource.isBeingGathered && 
+                    localResource.gatheringPlayerId !== playerId) {
+            // Kaynak artık toplanmıyor
+            localResource.isBeingGathered = false;
+            localResource.gatheringPlayerId = null;
+            localResource.gatheringPlayerName = null;
+            resourcesChanged = true;
           }
         }
       }
     });
     
-    // Force a redraw to show updated resource states
-    requestAnimationFrame(() => {
-      if (gameInstance) gameInstance.gameLoop();
-    });
+    // Sadece değişiklik varsa yeniden çizim yap
+    if (resourcesChanged) {
+      // Çok sık yeniden çizim yapmayı önlemek için throttling uygulayalım
+      const currentTime = Date.now();
+      if (currentTime - lastFirebaseUpdateTime > FIREBASE_UPDATE_THROTTLE) {
+        lastFirebaseUpdateTime = currentTime;
+        // Force a redraw to show updated resource states
+        requestAnimationFrame(() => {
+          if (gameInstance) gameInstance.gameLoop();
+        });
+      }
+    }
   }
 });
 
@@ -420,28 +456,73 @@ class Game {
     this.resources = [];
 
     try {
-      const mapsRef = ref(db, 'maps');
-
-      const dbResources = await get(mapsRef);
-
-      const mapData = dbResources.val();
-
-      const mapResources = mapData.resources.locations;
-
-      console.log("Map resources:", mapResources);
-
-      if (mapResources && Array.isArray(mapResources)) {
-        mapResources.forEach((resource: { x: number; y: number; rarity: number }) => {
-          if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
-            const newResource = new Resource(resource.x, resource.y, resource.rarity);
+      // Önce resources koleksiyonundan kaynakları almayı deneyelim
+      const resourcesRef = ref(db, 'resources');
+      const resourcesSnapshot = await get(resourcesRef);
+      
+      if (resourcesSnapshot.exists()) {
+        console.log("Firebase'den kaynaklar yükleniyor...");
+        const resourcesData = resourcesSnapshot.val();
+        
+        // Her kaynağı işle
+        Object.entries(resourcesData).forEach(([ _id, resourceData]: [string, any]) => {
+          if (resourceData && resourceData.position && typeof resourceData.position.x === 'number' && 
+              typeof resourceData.position.y === 'number' && typeof resourceData.rarity === 'number') {
+            
+            // resourceId'yi newResource oluştururken kullanabiliriz
+            const newResource = new Resource(
+              resourceData.position.x, 
+              resourceData.position.y, 
+              resourceData.rarity
+            );
+            
+            // Eğer kaynak zaten toplanmışsa veya toplanıyorsa, bu durumu ayarla
+            if (resourceData.isGathered) {
+              newResource.isGathered = true;
+            }
+            
+            if (resourceData.isBeingGathered && resourceData.gatheringPlayerId !== playerId) {
+              newResource.isBeingGathered = true;
+              newResource.gatheringPlayerId = resourceData.gatheringPlayerId;
+              newResource.gatheringPlayerName = resourceData.gatheringPlayerName;
+            }
+            
             this.resources.push(newResource);
           }
         });
+        
+        console.log(`Firebase'den ${this.resources.length} kaynak yüklendi`);
+      } else {
+        // Eğer resources koleksiyonu yoksa, eski maps yapısından almayı deneyelim
+        console.log("Resources koleksiyonu bulunamadı, maps yapısından yüklemeyi deniyorum...");
+        const mapsRef = ref(db, 'maps');
+        const dbResources = await get(mapsRef);
+        const mapData = dbResources.val();
+        
+        if (mapData && mapData.resources && mapData.resources.locations) {
+          const mapResources = mapData.resources.locations;
+          console.log("Map resources:", mapResources);
+          
+          if (Array.isArray(mapResources)) {
+            mapResources.forEach((resource: { x: number; y: number; rarity: number }) => {
+              if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
+                const newResource = new Resource(resource.x, resource.y, resource.rarity);
+                this.resources.push(newResource);
+              }
+            });
+          }
+        }
+        
+        console.log(`Maps yapısından ${this.resources.length} kaynak yüklendi`);
       }
-
-      console.log(`Loaded ${this.resources.length} resources from DB`);
+      
+      // Eğer hiç kaynak yüklenemezse, varsayılan kaynakları oluştur
+      if (this.resources.length === 0) {
+        console.log("Hiç kaynak yüklenemedi, varsayılan kaynaklar oluşturuluyor...");
+        this.generateDefaultResources();
+      }
     } catch (error) {
-      console.error('Error loading resources from DB:', error);
+      console.error('Kaynakları yüklerken hata oluştu:', error);
       this.generateDefaultResources();
     }
   }
@@ -724,6 +805,9 @@ class Game {
     const deltaTime = (currentTime - this.lastFrameTime) / 1000; // Convert to seconds
     this.lastFrameTime = currentTime;
     
+    // FPS hesapla ve göster (Debug için)
+    const fps = Math.round(1 / deltaTime);
+    
     // Clear the canvas
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
@@ -732,6 +816,12 @@ class Game {
     
     // Draw the game
     this.draw();
+    
+    // FPS göster (Debug için)
+    this.ctx.font = '12px Arial';
+    this.ctx.fillStyle = 'white';
+    this.ctx.textAlign = 'left';
+    this.ctx.fillText(`FPS: ${fps}`, 10, CANVAS_HEIGHT - 10);
     
     // Request next frame
     requestAnimationFrame(() => this.gameLoop());
