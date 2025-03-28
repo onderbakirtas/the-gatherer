@@ -6,7 +6,7 @@ import {
   MAP_WIDTH,
   MAP_HEIGHT,
   PLAYER_SIZE,
-  PLAYER_SPEED,
+  // PLAYER_SPEED,
   BORDER_WIDTH,
   MINIMAP_SIZE,
   MINIMAP_PADDING,
@@ -113,10 +113,10 @@ let otherPlayersMovement: Record<string, {
 }> = {};
 
 // Global variable to track last frame time for other players' movement
-let lastOtherPlayersUpdateTime = performance.now();
+// let lastOtherPlayersUpdateTime = performance.now();
 
 // Store the most recent delta time for consistent movement calculations
-let lastDeltaTime = 1/60; // Default to 60 FPS
+// let lastDeltaTime = 1/60; // Default to 60 FPS
 
 // Global değişken olarak son güncelleme zamanını tutalım
 let lastFirebaseUpdateTime = 0;
@@ -235,115 +235,121 @@ onValue(resourcesRef, snapshot => {
 });
 
 // Update other players' positions based on their movement state
-function updateOtherPlayersPositions(deltaTime: number) {
-  // Cap deltaTime to prevent large jumps if the game freezes momentarily
-  // This helps prevent "teleporting" when the game resumes after a pause
-  const cappedDeltaTime = Math.min(deltaTime, 0.1);
+// function updateOtherPlayersPositions(deltaTime: number) {
+//   // Cap deltaTime to prevent large jumps if the game freezes momentarily
+//   // This helps prevent "teleporting" when the game resumes after a pause
+//   const cappedDeltaTime = Math.min(deltaTime, 0.1);
   
-  // Calculate actual time elapsed since last update for smooth movement
-  const currentTime = performance.now();
-  const timeSinceLastUpdate = (currentTime - lastOtherPlayersUpdateTime) / 1000;
-  lastOtherPlayersUpdateTime = currentTime;
+//   // Calculate actual time elapsed since last update for smooth movement
+//   const currentTime = performance.now();
+//   const timeSinceLastUpdate = (currentTime - lastOtherPlayersUpdateTime) / 1000;
+//   lastOtherPlayersUpdateTime = currentTime;
   
-  // Use the smaller of the two time values to ensure consistent movement
-  // This helps synchronize movement across different frame rates
-  const effectiveDeltaTime = Math.min(cappedDeltaTime, timeSinceLastUpdate);
+//   // Use the smaller of the two time values to ensure consistent movement
+//   // This helps synchronize movement across different frame rates
+//   const effectiveDeltaTime = Math.min(cappedDeltaTime, timeSinceLastUpdate);
   
-  Object.entries(otherPlayersMovement).forEach(([_, movementData]) => {
-    try {
-      if (!movementData.isMoving || !movementData.targetPosition) return;
+//   Object.entries(otherPlayersMovement).forEach(([_, movementData]) => {
+//     try {
+//       if (!movementData.isMoving || !movementData.targetPosition) return;
       
-      const currentPos = movementData.currentPosition;
-      const targetPos = movementData.targetPosition;
+//       const currentPos = movementData.currentPosition;
+//       const targetPos = movementData.targetPosition;
       
-      // Calculate distance to target
-      const dx = targetPos.x - currentPos.x;
-      const dy = targetPos.y - currentPos.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
+//       // Calculate distance to target
+//       const dx = targetPos.x - currentPos.x;
+//       const dy = targetPos.y - currentPos.y;
+//       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // If player has reached the target
-      if (distance < 5) {
-        movementData.currentPosition = { x: targetPos.x, y: targetPos.y };
-        movementData.isMoving = false;
-        return;
-      }
+//       // If player has reached the target
+//       if (distance < 5) {
+//         movementData.currentPosition = { x: targetPos.x, y: targetPos.y };
+//         movementData.isMoving = false;
+//         return;
+//       }
       
-      // Calculate direction vector
-      const dirX = dx / distance;
-      const dirY = dy / distance;
+//       // Calculate direction vector
+//       const dirX = dx / distance;
+//       const dirY = dy / distance;
       
-      // Calculate movement distance for this frame using PLAYER_SPEED
-      // This ensures other players move at exactly the same speed as the main player
-      const moveDistance = PLAYER_SPEED * effectiveDeltaTime;
+//       // Calculate movement distance for this frame using PLAYER_SPEED
+//       // This ensures other players move at exactly the same speed as the main player
+//       const moveDistance = PLAYER_SPEED * effectiveDeltaTime;
       
-      // Prevent overshooting the target
-      const actualMoveDistance = Math.min(moveDistance, distance);
+//       // Prevent overshooting the target
+//       const actualMoveDistance = Math.min(moveDistance, distance);
       
-      // Update position with smoother movement
-      movementData.currentPosition.x += dirX * actualMoveDistance;
-      movementData.currentPosition.y += dirY * actualMoveDistance;
+//       // Update position with smoother movement
+//       movementData.currentPosition.x += dirX * actualMoveDistance;
+//       movementData.currentPosition.y += dirY * actualMoveDistance;
       
-      // Update last update time
-      movementData.lastUpdateTime = currentTime;
-    } catch (error) {
-      // Error handling to prevent movement freezes
-      console.error("Error updating player movement:", error);
-      // Reset movement state if there's an error to prevent permanent freezing
-      if (movementData) {
-        movementData.isMoving = false;
-      }
-    }
-  });
-}
+//       // Update last update time
+//       movementData.lastUpdateTime = currentTime;
+//     } catch (error) {
+//       // Error handling to prevent movement freezes
+//       console.error("Error updating player movement:", error);
+//       // Reset movement state if there's an error to prevent permanent freezing
+//       if (movementData) {
+//         movementData.isMoving = false;
+//       }
+//     }
+//   });
+// }
 
-function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, currentPlayerId: string, deltaTime?: number) {
-  // Skip if no players data
-  if (!playersData) return;
-  
-  // Update other players' positions using the provided delta time or the last known delta time
-  updateOtherPlayersPositions(deltaTime || lastDeltaTime);
-  
-  // Store the delta time for future use
-  if (deltaTime) {
-    lastDeltaTime = deltaTime;
-  }
-  
-  // Draw other players from the database
-  Object.entries(playersData).forEach(([otherPlayerId, playerData]: [string, any]) => {
-    if (otherPlayerId === currentPlayerId) return; // Skip current player
+function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, currentPlayerId: string) {
+  // Get all players from Firebase
+  const playersRef = ref(db, 'players');
+  onValue(playersRef, (snapshot) => {
+    const players = snapshot.val();
+    if (!players) return;
     
-    const movementData = otherPlayersMovement[otherPlayerId];
-    if (!movementData) return;
-    
-    const { currentPosition } = movementData;
-    
-    // Calculate screen position
-    const screenX = currentPosition.x - cameraOffset.x;
-    const screenY = currentPosition.y - cameraOffset.y;
-    
-    // Only draw if on screen
-    if (screenX < -PLAYER_SIZE || screenX > CANVAS_WIDTH + PLAYER_SIZE || 
-        screenY < -PLAYER_SIZE || screenY > CANVAS_HEIGHT + PLAYER_SIZE) {
-      return;
-    }
-    
-    // Draw player circle
-    ctx.beginPath();
-    ctx.arc(screenX, screenY, PLAYER_SIZE, 0, Math.PI * 2);
-    ctx.fillStyle = '#3498db'; // Blue color for other players
-    ctx.fill();
-    ctx.strokeStyle = '#2980b9';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    
-    // Draw player name if available
-    if (playerData.displayName) {
-      ctx.font = '14px Arial';
-      ctx.textAlign = 'center';
+    // Loop through all players
+    for (const id in players) {
+      // Skip current player
+      if (id === currentPlayerId) continue;
+      
+      const playerData = players[id];
+      
+      // Skip players that haven't been updated in the last 5 minutes
+      const lastUpdated = playerData.lastUpdated || 0;
+      const now = Date.now();
+      if (now - lastUpdated > 5 * 60 * 1000) continue;
+      
+      // Calculate screen position
+      const screenX = playerData.position.x - cameraOffset.x;
+      const screenY = playerData.position.y - cameraOffset.y;
+      
+      // Skip if player is off-screen
+      if (screenX < -PLAYER_SIZE || screenX > CANVAS_WIDTH + PLAYER_SIZE ||
+          screenY < -PLAYER_SIZE || screenY > CANVAS_HEIGHT + PLAYER_SIZE) {
+        continue;
+      }
+      
+      // Draw player circle
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, PLAYER_SIZE, 0, Math.PI * 2);
+      
+      // Kullanıcının seçtiği rengi kullan veya varsayılan mavi rengi kullan
+      ctx.fillStyle = playerData.color || '#3498db';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Draw player name
+      const displayName = playerData.displayName || id.substring(0, 8);
       ctx.fillStyle = 'white';
-      ctx.fillText(playerData.displayName, screenX, screenY - 25);
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = 3;
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      
+      // Draw text with outline for better visibility
+      ctx.strokeText(displayName, screenX, screenY - PLAYER_SIZE - 5);
+      ctx.fillText(displayName, screenX, screenY - PLAYER_SIZE - 5);
     }
-  });
+  }, { onlyOnce: true }); // Only get the data once per frame
 }
 
 class Game {
@@ -665,6 +671,7 @@ class Game {
       if (this.isPointInSettingsButton(clickX, clickY)) {
         this.showSettingsPopup = !this.showSettingsPopup;
         this.showControlsPopup = false; // Close controls popup if open
+        this.popupScrollPosition = 0; // Reset scroll position
         return;
       }
 
@@ -675,6 +682,11 @@ class Game {
 
       // Check if clicked on color buttons in settings popup
       if (this.handleColorButtonClick(clickX, clickY)) {
+        return;
+      }
+
+      // Check if clicked on scroll buttons in settings popup
+      if (this.handleSettingsScrollButtonClick(clickX, clickY)) {
         return;
       }
 
@@ -965,9 +977,9 @@ class Game {
 
   isPointInSettingsPopup(x: number, y: number): boolean {
     const popupX = CANVAS_WIDTH / 2 - 200;
-    const popupY = CANVAS_HEIGHT / 2 - 150;
+    const popupY = CANVAS_HEIGHT / 2 - 200;
     const popupWidth = 400;
-    const popupHeight = 300;
+    const popupHeight = 350;
 
     return x >= popupX && x <= popupX + popupWidth && y >= popupY && y <= popupY + popupHeight;
   }
@@ -976,14 +988,12 @@ class Game {
     if (!this.showSettingsPopup) return false;
     
     // Buton boyutları ve konumları (drawSettingsPopup ile aynı olmalı)
-    const buttonWidth = 80;
+    const buttonWidth = 80; 
     const buttonHeight = 30;
-    const buttonSpacing = 20;
-    const startX = CANVAS_WIDTH / 2 - buttonWidth - buttonSpacing / 2;
-    const startY = CANVAS_HEIGHT / 2 - 50;
+    const startY = CANVAS_HEIGHT / 2 - 200 + 60 - this.popupScrollPosition + 30;
     
     // İngilizce butonu kontrolü
-    if (x >= startX && x <= startX + buttonWidth && 
+    if (x >= CANVAS_WIDTH / 2 - buttonWidth - 20 && x <= CANVAS_WIDTH / 2 - 20 && 
         y >= startY && y <= startY + buttonHeight) {
       this.languageManager.loadTranslations('en');
       console.log("Dil İngilizce olarak değiştirildi");
@@ -991,8 +1001,7 @@ class Game {
     }
     
     // Türkçe butonu kontrolü
-    if (x >= startX + buttonWidth + buttonSpacing && 
-        x <= startX + buttonWidth * 2 + buttonSpacing && 
+    if (x >= CANVAS_WIDTH / 2 + 20 && x <= CANVAS_WIDTH / 2 + buttonWidth + 20 && 
         y >= startY && y <= startY + buttonHeight) {
       this.languageManager.loadTranslations('tr');
       console.log("Dil Türkçe olarak değiştirildi");
@@ -1007,27 +1016,24 @@ class Game {
     if (!this.showSettingsPopup) return false;
     
     // Renk butonlarının boyutları ve konumları (drawSettingsPopup ile aynı olmalı)
-    const buttonWidth = 80;
     const buttonHeight = 30;
-    const buttonSpacing = 20;
-    const startX = CANVAS_WIDTH / 2 - buttonWidth - buttonSpacing / 2; 
-    const startY = CANVAS_HEIGHT / 2 - 50;
+    const startY = CANVAS_HEIGHT / 2 - 200 + 60 - this.popupScrollPosition + 30;
     
-    const colorSize = 30;
-    const colorSpacing = 10;
-    const colorsPerRow = 4;
-    const colorStartX = CANVAS_WIDTH / 2 - ((colorSize * colorsPerRow) + (colorSpacing * (colorsPerRow - 1))) / 2;
-    const colorStartY = startY + buttonHeight + 60;
+    const colorSize = 24; // Daha küçük renk daireleri
+    const colorSpacing = 12;
+    const colorStartX = CANVAS_WIDTH / 2 - ((colorSize * PLAYER_COLORS.length) + (colorSpacing * (PLAYER_COLORS.length - 1))) / 2;
+    const colorStartY = startY + buttonHeight + 70;
     
-    // Her renk butonu için kontrol et
+    // Her renk butonu için kontrol et - tek satırda yuvarlak
     for (let i = 0; i < PLAYER_COLORS.length; i++) {
-      const row = Math.floor(i / colorsPerRow);
-      const col = i % colorsPerRow;
-      const colorX = colorStartX + (col * (colorSize + colorSpacing));
-      const colorY = colorStartY + (row * (colorSize + colorSpacing));
+      const x1 = colorStartX + (i * (colorSize + colorSpacing));
+      const y1 = colorStartY;
+      const centerX = x1 + colorSize/2;
+      const centerY = y1 + colorSize/2;
       
-      if (x >= colorX && x <= colorX + colorSize && 
-          y >= colorY && y <= colorY + colorSize) {
+      // Daire içinde mi kontrol et
+      const distance = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+      if (distance <= colorSize/2) {
         // Rengi değiştir
         this.player.setColor(PLAYER_COLORS[i].value);
         console.log(`Oyuncu rengi ${PLAYER_COLORS[i].name} olarak değiştirildi`);
@@ -1039,7 +1045,7 @@ class Game {
     const changeNameBtnWidth = 150;
     const changeNameBtnHeight = 30;
     const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
-    const changeNameBtnY = colorStartY + 130;
+    const changeNameBtnY = startY + buttonHeight + 110;
     
     if (x >= changeNameBtnX && x <= changeNameBtnX + changeNameBtnWidth &&
         y >= changeNameBtnY && y <= changeNameBtnY + changeNameBtnHeight) {
@@ -1047,11 +1053,37 @@ class Game {
       return true;
     }
     
-    // startX değişkenini dil butonları için kullanma
-    if (x >= startX && x <= startX + buttonWidth && 
-        y >= startY && y <= startY + buttonHeight) {
-      // Bu alan dil butonları için, burada bir şey yapmıyoruz
-      // Sadece startX değişkenini kullanmak için eklendi
+    return false;
+  }
+  
+  // Scroll butonlarını kontrol et
+  handleSettingsScrollButtonClick(x: number, y: number): boolean {
+    if (!this.showSettingsPopup) return false;
+    
+    const popupX = CANVAS_WIDTH / 2 - 200;
+    const popupY = CANVAS_HEIGHT / 2 - 200;
+    const popupWidth = 400;
+    
+    // Yukarı scroll düğmesi
+    const scrollUpX = popupX + popupWidth - 30;
+    const scrollUpY = popupY + 60;
+    
+    if (x >= scrollUpX - 15 && x <= scrollUpX + 15 && 
+        y >= scrollUpY && y <= scrollUpY + 15) {
+      // Yukarı scroll
+      this.popupScrollPosition = Math.max(0, this.popupScrollPosition - 30);
+      return true;
+    }
+    
+    // Aşağı scroll düğmesi
+    const scrollDownX = popupX + popupWidth - 30;
+    const scrollDownY = popupY + popupWidth - 30;
+    
+    if (x >= scrollDownX - 15 && x <= scrollDownX + 15 && 
+        y >= scrollDownY - 15 && y <= scrollDownY) {
+      // Aşağı scroll
+      this.popupScrollPosition = Math.min(200, this.popupScrollPosition + 30);
+      return true;
     }
     
     return false;
@@ -1371,9 +1403,9 @@ class Game {
     if (!this.showSettingsPopup) return;
 
     const popupX = CANVAS_WIDTH / 2 - 200;
-    const popupY = CANVAS_HEIGHT / 2 - 150;
+    const popupY = CANVAS_HEIGHT / 2 - 200;
     const popupWidth = 400;
-    const popupHeight = 300;
+    const popupHeight = 350;
 
     // Draw semi-transparent background overlay
     this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -1395,45 +1427,77 @@ class Game {
     this.ctx.textBaseline = 'top';
     this.ctx.fillText(t('game.settings.title'), CANVAS_WIDTH / 2, popupY + 20);
 
+    // Scroll düğmeleri
+    const scrollUpX = popupX + popupWidth - 30;
+    const scrollUpY = popupY + 60;
+    const scrollDownX = popupX + popupWidth - 30;
+    const scrollDownY = popupY + popupWidth - 30;
+    
+    // Yukarı scroll düğmesi
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    this.ctx.beginPath();
+    this.ctx.moveTo(scrollUpX, scrollUpY + 15);
+    this.ctx.lineTo(scrollUpX - 15, scrollUpY);
+    this.ctx.lineTo(scrollUpX + 15, scrollUpY);
+    this.ctx.closePath();
+    this.ctx.fill();
+    
+    // Aşağı scroll düğmesi
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    this.ctx.beginPath();
+    this.ctx.moveTo(scrollDownX, scrollDownY - 15);
+    this.ctx.lineTo(scrollDownX - 15, scrollDownY);
+    this.ctx.lineTo(scrollDownX + 15, scrollDownY);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Scroll edilebilir içerik alanı
+    const contentY = popupY + 60 - this.popupScrollPosition;
+    
+    // İçerik alanını kırp
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.rect(popupX + 10, popupY + 50, popupWidth - 20, popupHeight - 60);
+    this.ctx.clip();
+
     // Draw language selection
     this.ctx.font = '18px Arial';
     this.ctx.textAlign = 'center';
-    this.ctx.fillText(t('game.settings.language'), CANVAS_WIDTH / 2, popupY + 70);
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillText(t('game.settings.language'), CANVAS_WIDTH / 2, contentY);
 
     // Draw language buttons
-    const buttonWidth = 80;
+    const buttonWidth = 80; 
     const buttonHeight = 30;
-    const buttonSpacing = 20;
-    const startX = CANVAS_WIDTH / 2 - buttonWidth - buttonSpacing / 2;
-    const startY = CANVAS_HEIGHT / 2 - 50;
+    const startY = contentY + 30;
 
     // English button
     const isEnglish = this.languageManager.getCurrentLanguage() === 'en';
     this.ctx.fillStyle = isEnglish ? 'rgba(0, 100, 200, 0.8)' : 'rgba(50, 50, 50, 0.8)';
-    this.ctx.fillRect(startX, startY, buttonWidth, buttonHeight);
+    this.ctx.fillRect(CANVAS_WIDTH / 2 - buttonWidth - 20, startY, buttonWidth, buttonHeight);
     this.ctx.strokeStyle = 'white';
     this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(startX, startY, buttonWidth, buttonHeight);
+    this.ctx.strokeRect(CANVAS_WIDTH / 2 - buttonWidth - 20, startY, buttonWidth, buttonHeight);
 
     this.ctx.fillStyle = 'white';
     this.ctx.font = '16px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.fillText('EN', startX + buttonWidth / 2, startY + buttonHeight / 2);
+    this.ctx.fillText('EN', CANVAS_WIDTH / 2 - 20, startY + buttonHeight / 2);
 
     // Turkish button
     const isTurkish = this.languageManager.getCurrentLanguage() === 'tr';
     this.ctx.fillStyle = isTurkish ? 'rgba(0, 100, 200, 0.8)' : 'rgba(50, 50, 50, 0.8)';
-    this.ctx.fillRect(startX + buttonWidth + buttonSpacing, startY, buttonWidth, buttonHeight);
+    this.ctx.fillRect(CANVAS_WIDTH / 2 + 20, startY, buttonWidth, buttonHeight);
     this.ctx.strokeStyle = 'white';
     this.ctx.lineWidth = 2;
-    this.ctx.strokeRect(startX + buttonWidth + buttonSpacing, startY, buttonWidth, buttonHeight);
+    this.ctx.strokeRect(CANVAS_WIDTH / 2 + 20, startY, buttonWidth, buttonHeight);
 
     this.ctx.fillStyle = 'white';
     this.ctx.font = '16px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
-    this.ctx.fillText('TR', startX + buttonWidth + buttonSpacing + buttonWidth / 2, startY + buttonHeight / 2);
+    this.ctx.fillText('TR', CANVAS_WIDTH / 2 + 20 + buttonWidth / 2, startY + buttonHeight / 2);
 
     // Renk seçimi başlığı
     this.ctx.font = '18px Arial';
@@ -1441,32 +1505,34 @@ class Game {
     this.ctx.fillStyle = 'white';
     this.ctx.fillText(t('game.settings.playerColor'), CANVAS_WIDTH / 2, startY + buttonHeight + 30);
 
-    // Renk butonlarını çiz
-    const colorSize = 30;
-    const colorSpacing = 10;
-    const colorsPerRow = 4;
-    const colorStartX = CANVAS_WIDTH / 2 - ((colorSize * colorsPerRow) + (colorSpacing * (colorsPerRow - 1))) / 2;
-    const colorStartY = startY + buttonHeight + 60;
+    // Renk butonlarını çiz - tek satırda yuvarlak
+    const colorSize = 24; // Daha küçük renk daireleri
+    const colorStartX = CANVAS_WIDTH / 2 - ((colorSize * PLAYER_COLORS.length) + (12 * (PLAYER_COLORS.length - 1))) / 2;
+    const colorStartY = startY + buttonHeight + 70;
 
     PLAYER_COLORS.forEach((color, index) => {
-      const row = Math.floor(index / colorsPerRow);
-      const col = index % colorsPerRow;
-      const x = colorStartX + (col * (colorSize + colorSpacing));
-      const y = colorStartY + (row * (colorSize + colorSpacing));
+      const x = colorStartX + (index * (colorSize + 12));
+      const y = colorStartY;
 
-      // Renk kutusunu çiz
+      // Renk dairesini çiz
+      this.ctx.beginPath();
+      this.ctx.arc(x + colorSize/2, y + colorSize/2, colorSize/2, 0, Math.PI * 2);
       this.ctx.fillStyle = color.value;
-      this.ctx.fillRect(x, y, colorSize, colorSize);
+      this.ctx.fill();
       
       // Seçili renk için çerçeve çiz
       if (this.player.color === color.value) {
         this.ctx.strokeStyle = 'white';
         this.ctx.lineWidth = 3;
-        this.ctx.strokeRect(x - 3, y - 3, colorSize + 6, colorSize + 6);
+        this.ctx.beginPath();
+        this.ctx.arc(x + colorSize/2, y + colorSize/2, colorSize/2 + 3, 0, Math.PI * 2);
+        this.ctx.stroke();
       } else {
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
         this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(x, y, colorSize, colorSize);
+        this.ctx.beginPath();
+        this.ctx.arc(x + colorSize/2, y + colorSize/2, colorSize/2, 0, Math.PI * 2);
+        this.ctx.stroke();
       }
     });
 
@@ -1474,19 +1540,19 @@ class Game {
     this.ctx.font = '18px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = 'white';
-    this.ctx.fillText(t('game.settings.displayName'), CANVAS_WIDTH / 2, colorStartY + 80);
+    this.ctx.fillText(t('game.settings.displayName'), CANVAS_WIDTH / 2, colorStartY + 60);
 
-    // Display current name
+    // Draw current name
     const currentName = this.player.displayName || '';
     this.ctx.font = '16px Arial';
     this.ctx.fillStyle = '#aaaaaa';
-    this.ctx.fillText(currentName, CANVAS_WIDTH / 2, colorStartY + 110);
+    this.ctx.fillText(currentName, CANVAS_WIDTH / 2, colorStartY + 90);
 
     // Draw change name button
     const changeNameBtnWidth = 150;
     const changeNameBtnHeight = 30;
     const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
-    const changeNameBtnY = colorStartY + 130;
+    const changeNameBtnY = colorStartY + 110;
 
     this.ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
     this.ctx.fillRect(changeNameBtnX, changeNameBtnY, changeNameBtnWidth, changeNameBtnHeight);
@@ -1499,6 +1565,21 @@ class Game {
     this.ctx.textAlign = 'center';
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText(t('game.settings.changeName'), changeNameBtnX + changeNameBtnWidth / 2, changeNameBtnY + changeNameBtnHeight / 2);
+    
+    // Scroll çubuğunu çiz
+    const totalContentHeight = 350; // Tahmini içerik yüksekliği
+    const visibleHeight = popupHeight - 60;
+    const scrollBarHeight = Math.max(50, (visibleHeight / totalContentHeight) * visibleHeight);
+    const scrollBarY = popupY + 50 + (this.popupScrollPosition / totalContentHeight) * visibleHeight;
+    
+    this.ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+    this.ctx.fillRect(popupX + popupWidth - 15, popupY + 50, 5, visibleHeight);
+    
+    this.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
+    this.ctx.fillRect(popupX + popupWidth - 15, scrollBarY, 5, scrollBarHeight);
+    
+    // Restore clipping
+    this.ctx.restore();
   }
   
   // Show a dialog to change the display name
