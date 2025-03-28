@@ -104,19 +104,17 @@ let gameInstance: Game | null = null;
 // Store players data from the database
 let playersData: Record<string, any> = {};
 
-// Store other players' movement state
-let otherPlayersMovement: Record<string, {
-  currentPosition: { x: number, y: number },
-  targetPosition: { x: number, y: number, timestamp: number } | null,
-  isMoving: boolean,
-  lastUpdateTime: number // Track last update time for consistent movement
-}> = {};
+// Store other players' data for client-side movement
+interface OtherPlayerData {
+  position: { x: number, y: number };
+  targetPosition: { x: number, y: number } | null;
+  isMoving: boolean;
+  lastUpdated: number;
+  color: string;
+  displayName: string;
+}
 
-// Global variable to track last frame time for other players' movement
-// let lastOtherPlayersUpdateTime = performance.now();
-
-// Store the most recent delta time for consistent movement calculations
-// let lastDeltaTime = 1/60; // Default to 60 FPS
+const otherPlayers: Record<string, OtherPlayerData> = {};
 
 // Global değişken olarak son güncelleme zamanını tutalım
 let lastFirebaseUpdateTime = 0;
@@ -134,29 +132,27 @@ onValue(playerRef, snapshot => {
     if (otherPlayerId === playerId) return; // Skip current player
     
     // Initialize player movement state if not exists
-    if (!otherPlayersMovement[otherPlayerId]) {
-      otherPlayersMovement[otherPlayerId] = {
-        currentPosition: playerData.position || { x: 0, y: 0 },
-        targetPosition: null,
-        isMoving: false,
-        lastUpdateTime: performance.now()
+    if (!otherPlayers[otherPlayerId]) {
+      otherPlayers[otherPlayerId] = {
+        position: { x: playerData.position.x, y: playerData.position.y },
+        targetPosition: playerData.targetPosition,
+        isMoving: playerData.isMoving || false,
+        lastUpdated: Date.now(),
+        color: playerData.color || '#3498db',
+        displayName: playerData.displayName || otherPlayerId.substring(0, 8)
       };
     }
     
-    // Update current position if available
-    if (playerData.position) {
-      otherPlayersMovement[otherPlayerId].currentPosition = playerData.position;
-    }
+    // Update player data
+    otherPlayers[otherPlayerId].targetPosition = playerData.targetPosition;
+    otherPlayers[otherPlayerId].isMoving = playerData.isMoving || false;
+    otherPlayers[otherPlayerId].lastUpdated = Date.now();
+    otherPlayers[otherPlayerId].color = playerData.color || '#3498db';
+    otherPlayers[otherPlayerId].displayName = playerData.displayName || otherPlayerId.substring(0, 8);
     
-    // Update target position if available
-    if (playerData.targetPosition) {
-      // If this is a new target or a more recent one
-      if (!otherPlayersMovement[otherPlayerId].targetPosition || 
-          playerData.targetPosition.timestamp > otherPlayersMovement[otherPlayerId].targetPosition!.timestamp) {
-        otherPlayersMovement[otherPlayerId].targetPosition = playerData.targetPosition;
-        otherPlayersMovement[otherPlayerId].isMoving = true;
-        otherPlayersMovement[otherPlayerId].lastUpdateTime = performance.now();
-      }
+    // If player has reached destination or has no target, update position directly
+    if (!playerData.isMoving || !playerData.targetPosition) {
+      otherPlayers[otherPlayerId].position = { x: playerData.position.x, y: playerData.position.y };
     }
   });
   
@@ -234,74 +230,15 @@ onValue(resourcesRef, snapshot => {
   }
 });
 
-// Update other players' positions based on their movement state
-// function updateOtherPlayersPositions(deltaTime: number) {
-//   // Cap deltaTime to prevent large jumps if the game freezes momentarily
-//   // This helps prevent "teleporting" when the game resumes after a pause
-//   const cappedDeltaTime = Math.min(deltaTime, 0.1);
-  
-//   // Calculate actual time elapsed since last update for smooth movement
-//   const currentTime = performance.now();
-//   const timeSinceLastUpdate = (currentTime - lastOtherPlayersUpdateTime) / 1000;
-//   lastOtherPlayersUpdateTime = currentTime;
-  
-//   // Use the smaller of the two time values to ensure consistent movement
-//   // This helps synchronize movement across different frame rates
-//   const effectiveDeltaTime = Math.min(cappedDeltaTime, timeSinceLastUpdate);
-  
-//   Object.entries(otherPlayersMovement).forEach(([_, movementData]) => {
-//     try {
-//       if (!movementData.isMoving || !movementData.targetPosition) return;
-      
-//       const currentPos = movementData.currentPosition;
-//       const targetPos = movementData.targetPosition;
-      
-//       // Calculate distance to target
-//       const dx = targetPos.x - currentPos.x;
-//       const dy = targetPos.y - currentPos.y;
-//       const distance = Math.sqrt(dx * dx + dy * dy);
-      
-//       // If player has reached the target
-//       if (distance < 5) {
-//         movementData.currentPosition = { x: targetPos.x, y: targetPos.y };
-//         movementData.isMoving = false;
-//         return;
-//       }
-      
-//       // Calculate direction vector
-//       const dirX = dx / distance;
-//       const dirY = dy / distance;
-      
-//       // Calculate movement distance for this frame using PLAYER_SPEED
-//       // This ensures other players move at exactly the same speed as the main player
-//       const moveDistance = PLAYER_SPEED * effectiveDeltaTime;
-      
-//       // Prevent overshooting the target
-//       const actualMoveDistance = Math.min(moveDistance, distance);
-      
-//       // Update position with smoother movement
-//       movementData.currentPosition.x += dirX * actualMoveDistance;
-//       movementData.currentPosition.y += dirY * actualMoveDistance;
-      
-//       // Update last update time
-//       movementData.lastUpdateTime = currentTime;
-//     } catch (error) {
-//       // Error handling to prevent movement freezes
-//       console.error("Error updating player movement:", error);
-//       // Reset movement state if there's an error to prevent permanent freezing
-//       if (movementData) {
-//         movementData.isMoving = false;
-//       }
-//     }
-//   });
-// }
-
 function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, currentPlayerId: string) {
   // Get all players from Firebase
   const playersRef = ref(db, 'players');
   onValue(playersRef, (snapshot) => {
     const players = snapshot.val();
     if (!players) return;
+    
+    // Current time for movement calculations
+    const now = Date.now();
     
     // Loop through all players
     for (const id in players) {
@@ -312,44 +249,132 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
       
       // Skip players that haven't been updated in the last 5 minutes
       const lastUpdated = playerData.lastUpdated || 0;
-      const now = Date.now();
-      if (now - lastUpdated > 5 * 60 * 1000) continue;
-      
-      // Calculate screen position
-      const screenX = playerData.position.x - cameraOffset.x;
-      const screenY = playerData.position.y - cameraOffset.y;
-      
-      // Skip if player is off-screen
-      if (screenX < -PLAYER_SIZE || screenX > CANVAS_WIDTH + PLAYER_SIZE ||
-          screenY < -PLAYER_SIZE || screenY > CANVAS_HEIGHT + PLAYER_SIZE) {
+      if (now - lastUpdated > 5 * 60 * 1000) {
+        // Remove old players from our local tracking
+        if (otherPlayers[id]) {
+          delete otherPlayers[id];
+        }
         continue;
       }
       
-      // Draw player circle
-      ctx.beginPath();
-      ctx.arc(screenX, screenY, PLAYER_SIZE, 0, Math.PI * 2);
-      
-      // Kullanıcının seçtiği rengi kullan veya varsayılan mavi rengi kullan
-      ctx.fillStyle = playerData.color || '#3498db';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      // Draw player name
-      const displayName = playerData.displayName || id.substring(0, 8);
-      ctx.fillStyle = 'white';
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = 3;
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      
-      // Draw text with outline for better visibility
-      ctx.strokeText(displayName, screenX, screenY - PLAYER_SIZE - 5);
-      ctx.fillText(displayName, screenX, screenY - PLAYER_SIZE - 5);
+      // Initialize or update player in our local tracking
+      if (!otherPlayers[id]) {
+        otherPlayers[id] = {
+          position: { x: playerData.position.x, y: playerData.position.y },
+          targetPosition: playerData.targetPosition,
+          isMoving: playerData.isMoving || false,
+          lastUpdated: now,
+          color: playerData.color || '#3498db',
+          displayName: playerData.displayName || id.substring(0, 8)
+        };
+      } else {
+        // Update player data
+        otherPlayers[id].targetPosition = playerData.targetPosition;
+        otherPlayers[id].isMoving = playerData.isMoving || false;
+        otherPlayers[id].lastUpdated = now;
+        otherPlayers[id].color = playerData.color || '#3498db';
+        otherPlayers[id].displayName = playerData.displayName || id.substring(0, 8);
+        
+        // If player has reached destination or has no target, update position directly
+        if (!playerData.isMoving || !playerData.targetPosition) {
+          otherPlayers[id].position = { x: playerData.position.x, y: playerData.position.y };
+        }
+      }
     }
-  }, { onlyOnce: true }); // Only get the data once per frame
+  });
+  
+  // Update and draw all other players
+  for (const id in otherPlayers) {
+    const player = otherPlayers[id];
+    
+    // Update player movement on client side
+    if (player.isMoving && player.targetPosition) {
+      // Calculate direction to target
+      const dx = player.targetPosition.x - player.position.x;
+      const dy = player.targetPosition.y - player.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // If player is close to target, snap to it
+      if (distance < 5) {
+        player.position.x = player.targetPosition.x;
+        player.position.y = player.targetPosition.y;
+        player.isMoving = false;
+      } else {
+        // Move player towards target
+        const dirX = dx / distance;
+        const dirY = dy / distance;
+        
+        // Calculate movement based on time (deltaTime approximation)
+        const moveDistance = 5 * (1/60); // Assuming 60 FPS
+        player.position.x += dirX * moveDistance;
+        player.position.y += dirY * moveDistance;
+      }
+    }
+    
+    // Calculate screen position
+    const screenX = player.position.x - cameraOffset.x;
+    const screenY = player.position.y - cameraOffset.y;
+    
+    // Skip if player is off-screen
+    if (screenX < -PLAYER_SIZE || screenX > CANVAS_WIDTH + PLAYER_SIZE ||
+        screenY < -PLAYER_SIZE || screenY > CANVAS_HEIGHT + PLAYER_SIZE) {
+      continue;
+    }
+    
+    // Draw player circle
+    ctx.beginPath();
+    ctx.arc(screenX, screenY, PLAYER_SIZE, 0, Math.PI * 2);
+    
+    // Use player's color or default
+    ctx.fillStyle = player.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // Draw player name
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    
+    // Draw text with outline for better visibility
+    ctx.strokeText(player.displayName, screenX, screenY - PLAYER_SIZE - 5);
+    ctx.fillText(player.displayName, screenX, screenY - PLAYER_SIZE - 5);
+    
+    // Draw target cross if player is moving
+    if (player.isMoving && player.targetPosition) {
+      // Draw a cross at the target position
+      const targetScreenX = player.targetPosition.x - cameraOffset.x;
+      const targetScreenY = player.targetPosition.y - cameraOffset.y;
+      
+      // Only draw if on screen
+      if (targetScreenX >= 0 && targetScreenX <= CANVAS_WIDTH && 
+          targetScreenY >= 0 && targetScreenY <= CANVAS_HEIGHT) {
+        
+        // Set cross style
+        ctx.strokeStyle = 'rgba(255, 255, 0, 0.6)'; // Semi-transparent yellow
+        ctx.lineWidth = 1;
+        
+        // Draw cross
+        const crossSize = 5;
+        
+        // First diagonal line
+        ctx.beginPath();
+        ctx.moveTo(targetScreenX - crossSize, targetScreenY - crossSize);
+        ctx.lineTo(targetScreenX + crossSize, targetScreenY + crossSize);
+        ctx.stroke();
+        
+        // Second diagonal line
+        ctx.beginPath();
+        ctx.moveTo(targetScreenX + crossSize, targetScreenY - crossSize);
+        ctx.lineTo(targetScreenX - crossSize, targetScreenY + crossSize);
+        ctx.stroke();
+      }
+    }
+  }
 }
 
 class Game {
@@ -730,6 +755,9 @@ class Game {
       // Prevent the context menu from appearing
       e.preventDefault();
 
+      // If player is already moving, don't allow setting a new target
+      if (this.player.isMoving) return;
+
       const rect = this.canvas.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
@@ -742,6 +770,8 @@ class Game {
       // Check if clicked on a resource
       const clickedResource = this.findResourceAtPosition(worldX, worldY);
 
+      let targetSet = false;
+      
       if (clickedResource) {
         // Calculate a position near the resource
         const direction = new Vector2(
@@ -769,11 +799,13 @@ class Game {
           clampedY = MAP_HEIGHT - BORDER_WIDTH;
         }
 
-        // Store the target position for drawing the cross
-        this.lastClickPosition = new Vector2(clampedX, clampedY);
-
         // Set player target to the valid position
-        this.player.setTarget(clampedX, clampedY);
+        targetSet = this.player.setTarget(clampedX, clampedY);
+        
+        // Only store the target position for drawing the cross if movement was successful
+        if (targetSet) {
+          this.lastClickPosition = new Vector2(clampedX, clampedY);
+        }
       } else {
         // Calculate target position - either the click position or the closest point on the border
         let targetX = worldX;
@@ -792,11 +824,13 @@ class Game {
           targetY = MAP_HEIGHT - BORDER_WIDTH;
         }
 
-        // Store the target position for drawing the cross
-        this.lastClickPosition = new Vector2(targetX, targetY);
-
         // Set player target to the valid position
-        this.player.setTarget(targetX, targetY);
+        targetSet = this.player.setTarget(targetX, targetY);
+        
+        // Only store the target position for drawing the cross if movement was successful
+        if (targetSet) {
+          this.lastClickPosition = new Vector2(targetX, targetY);
+        }
       }
     });
   }
@@ -917,6 +951,14 @@ class Game {
     
     // Draw the player
     this.player.draw(this.ctx);
+    
+    // Draw target cross if player is moving
+    if (this.player.isMoving && this.player.targetPosition) {
+      this.drawTargetCross(this.player.targetPosition, cameraOffset);
+    } else if (this.lastClickPosition) {
+      // Draw the last click position cross
+      this.drawTargetCross(this.lastClickPosition, cameraOffset);
+    }
     
     // Draw UI elements
     this.drawUserInterface();

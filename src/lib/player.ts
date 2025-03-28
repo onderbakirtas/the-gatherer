@@ -106,15 +106,15 @@ export class Player {
 
   setTarget(x: number, y: number) {
     // Don't allow movement while gathering
-    if (this.isGathering) return;
+    if (this.isGathering) return false;
     
     // Don't allow changing direction while already moving
-    if (this.isMoving) return;
+    if (this.isMoving) return false;
 
     this.targetPosition = new Vector2(x, y);
     this.isMoving = true;
 
-    // Update the database with the new target position
+    // Update the database with the new target position - only once when target is set
     this.updatePlayerPositionInDB();
 
     // Stop gathering if player moves
@@ -123,6 +123,8 @@ export class Player {
       this.currentResource = null;
       this.isGathering = false;
     }
+    
+    return true;
   }
 
   update(deltaTime: number) {
@@ -140,6 +142,7 @@ export class Player {
       this.targetPosition = null;
       
       // Update final position in database when player stops moving
+      // Also clear the target position by setting it to null
       this.updatePlayerPositionInDB();
       return;
     }
@@ -158,11 +161,8 @@ export class Player {
     this.position.x += moveVector.x;
     this.position.y += moveVector.y;
     
-    // Only update position in database occasionally to reduce load
-    // This is mainly for players who just joined and need to see current positions
-    if (Math.random() < 0.01) { // Reduced frequency (approximately every ~1.5 seconds)
-      this.updatePlayerPositionInDB();
-    }
+    // We don't update the position in Firebase during movement
+    // This is now done only when the target is set and when the player reaches the destination
   }
 
   draw(ctx: CanvasRenderingContext2D) {
