@@ -4,7 +4,7 @@ import { ResourceRarity } from "../utils/types";
 import { Vector2 } from "./vector2";
 import { t } from "./language-manager";
 import { Resource, resourceT1Image, resourceT2Image, resourceT3Image, resourceT4Image, resourceT5Image } from "./resource";
-import { ref, set } from "firebase/database";
+import { ref, set, get } from "firebase/database";
 import { db } from "../utils/firebase";
 
 export class Player {
@@ -14,6 +14,7 @@ export class Player {
   currentResource: Resource | null = null;
   isGathering = false;
   playerId: string;
+  displayName: string;
   inventory: { [key in ResourceRarity]: number } = {
     [ResourceRarity.COMMON]: 0,
     [ResourceRarity.UNCOMMON]: 0,
@@ -25,6 +26,8 @@ export class Player {
   constructor(x: number, y: number, playerId: string) {
     this.position = new Vector2(x, y);
     this.playerId = playerId;
+    // Initialize display name with player ID by default
+    this.displayName = playerId.replace('player_', '');
     
     // Update player position in Firebase when created
     this.updatePlayerPositionInDB();
@@ -40,8 +43,51 @@ export class Player {
         x: this.position.x,
         y: this.position.y
       },
+      displayName: this.displayName,
+      id: this.playerId, // Store the ID explicitly in the database
       lastUpdated: Date.now()
     });
+  }
+
+  // Set or update the player's display name
+  setDisplayName(newName: string) {
+    if (!newName || newName.trim() === '') return;
+    
+    this.displayName = newName.trim();
+    
+    // Update the display name in Firebase
+    const playerRef = ref(db, `players/${this.playerId}`);
+    
+    // Get current data first to avoid overwriting other fields
+    get(playerRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        const currentData = snapshot.val();
+        
+        // Update only the display name and preserve other data
+        set(playerRef, {
+          ...currentData,
+          displayName: this.displayName,
+          id: this.playerId,
+          lastUpdated: Date.now()
+        });
+      } else {
+        // If no data exists yet, create a new entry
+        set(playerRef, {
+          position: {
+            x: this.position.x,
+            y: this.position.y
+          },
+          displayName: this.displayName,
+          id: this.playerId,
+          lastUpdated: Date.now()
+        });
+      }
+    }).catch((error) => {
+      console.error("Error updating display name:", error);
+    });
+    
+    // Also update in localStorage for persistence
+    localStorage.setItem('playerDisplayName', this.displayName);
   }
 
   setTarget(x: number, y: number) {
@@ -107,6 +153,18 @@ export class Player {
     ctx.strokeStyle = '#2980b9';
     ctx.lineWidth = 2;
     ctx.stroke();
+    
+    // Draw player display name above
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    
+    // Draw text with outline for better visibility
+    ctx.strokeText(this.displayName, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - PLAYER_SIZE - 5);
+    ctx.fillText(this.displayName, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - PLAYER_SIZE - 5);
   }
 
   startGatheringResource(resource: Resource): void {

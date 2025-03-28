@@ -81,10 +81,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 // Generate a unique player ID
 // Check if player ID is already in localStorage
 let playerId = localStorage.getItem('playerId');
+let isNewPlayer = false;
 
 if (!playerId) {
+  isNewPlayer = true;
   playerId = 'player_' + Math.random().toString(36).slice(2, 9);
   localStorage.setItem('playerId', playerId);
+}
+
+// Get saved display name or create a default one
+let playerDisplayName = localStorage.getItem('playerDisplayName');
+if (!playerDisplayName) {
+  playerDisplayName = playerId.replace('player_', '');
+  localStorage.setItem('playerDisplayName', playerDisplayName);
 }
 
 let players: Record<string, any> = {};
@@ -147,7 +156,8 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
     ctx.lineWidth = 2;
     ctx.stroke();
     
-    // Draw player ID above
+    // Draw player display name above (or ID if display name not available)
+    const displayName = playerData.displayName || id.substring(0, 8);
     ctx.fillStyle = 'white';
     ctx.strokeStyle = 'black';
     ctx.lineWidth = 3;
@@ -156,8 +166,8 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
     ctx.textBaseline = 'bottom';
     
     // Draw text with outline for better visibility
-    ctx.strokeText(id.substring(0, 8), screenX, screenY - PLAYER_SIZE - 5);
-    ctx.fillText(id.substring(0, 8), screenX, screenY - PLAYER_SIZE - 5);
+    ctx.strokeText(displayName, screenX, screenY - PLAYER_SIZE - 5);
+    ctx.fillText(displayName, screenX, screenY - PLAYER_SIZE - 5);
   });
 }
 
@@ -188,6 +198,13 @@ class Game {
 
     // Initialize player at the center of the map
     this.player = new Player(MAP_WIDTH / 2, MAP_HEIGHT / 2, playerId || 'unknown_player');
+    
+    // Set player display name from localStorage if available
+    const savedDisplayName = localStorage.getItem('playerDisplayName');
+    if (savedDisplayName) {
+      this.player.displayName = savedDisplayName;
+    }
+    
     this.camera = new Camera(this.player.position);
 
     // Set up event listeners
@@ -195,6 +212,14 @@ class Game {
 
     // Initialize the game
     this.init();
+    
+    // If this is a new player, show the display name dialog after a short delay
+    // to ensure the game is fully loaded
+    if (isNewPlayer) {
+      setTimeout(() => {
+        this.showWelcomeNameDialog();
+      }, 1000);
+    }
   }
 
   async init() {
@@ -811,6 +836,122 @@ class Game {
       this.languageManager.loadTranslations('tr');
       return;
     }
+    
+    // Check if change name button was clicked
+    const changeNameBtnWidth = 150;
+    const changeNameBtnHeight = 30;
+    const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
+    const changeNameBtnY = startY + buttonHeight + 80;
+    
+    if (
+      x >= changeNameBtnX &&
+      x <= changeNameBtnX + changeNameBtnWidth &&
+      y >= changeNameBtnY &&
+      y <= changeNameBtnY + changeNameBtnHeight
+    ) {
+      this.showDisplayNameDialog();
+      return;
+    }
+  }
+  
+  // Show a dialog to change the display name
+  showDisplayNameDialog(): void {
+    // Create dialog overlay
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    overlay.style.display = 'flex';
+    overlay.style.justifyContent = 'center';
+    overlay.style.alignItems = 'center';
+    overlay.style.zIndex = '1000';
+    
+    // Create dialog box
+    const dialog = document.createElement('div');
+    dialog.style.width = '300px';
+    dialog.style.padding = '20px';
+    dialog.style.backgroundColor = '#333';
+    dialog.style.borderRadius = '5px';
+    dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    
+    // Create title
+    const title = document.createElement('h2');
+    title.textContent = t('game.settings.changeName');
+    title.style.color = 'white';
+    title.style.marginTop = '0';
+    title.style.textAlign = 'center';
+    
+    // Create input field
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = t('game.settings.enterName');
+    input.value = this.player.displayName || '';
+    input.style.width = '100%';
+    input.style.padding = '8px';
+    input.style.marginTop = '15px';
+    input.style.marginBottom = '15px';
+    input.style.boxSizing = 'border-box';
+    input.style.backgroundColor = '#444';
+    input.style.color = 'white';
+    input.style.border = '1px solid #555';
+    input.style.borderRadius = '3px';
+    
+    // Create button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.justifyContent = 'space-between';
+    
+    // Create save button
+    const saveButton = document.createElement('button');
+    saveButton.textContent = t('game.settings.save');
+    saveButton.style.padding = '8px 15px';
+    saveButton.style.backgroundColor = '#2980b9';
+    saveButton.style.color = 'white';
+    saveButton.style.border = 'none';
+    saveButton.style.borderRadius = '3px';
+    saveButton.style.cursor = 'pointer';
+    
+    // Create cancel button
+    const cancelButton = document.createElement('button');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.padding = '8px 15px';
+    cancelButton.style.backgroundColor = '#7f8c8d';
+    cancelButton.style.color = 'white';
+    cancelButton.style.border = 'none';
+    cancelButton.style.borderRadius = '3px';
+    cancelButton.style.cursor = 'pointer';
+    
+    // Add event listeners
+    saveButton.addEventListener('click', () => {
+      const newName = input.value.trim();
+      if (newName) {
+        this.player.setDisplayName(newName);
+        document.body.removeChild(overlay);
+      }
+    });
+    
+    cancelButton.addEventListener('click', () => {
+      document.body.removeChild(overlay);
+    });
+    
+    // Add elements to the dialog
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(saveButton);
+    dialog.appendChild(title);
+    dialog.appendChild(input);
+    dialog.appendChild(buttonContainer);
+    overlay.appendChild(dialog);
+    
+    // Add dialog to the document
+    document.body.appendChild(overlay);
+    
+    // Focus the input field
+    setTimeout(() => {
+      input.focus();
+    }, 100);
   }
 
   drawControlsButton(): void {
@@ -1191,11 +1332,146 @@ class Game {
     this.ctx.textBaseline = 'middle';
     this.ctx.fillText('TR', startX + buttonWidth + buttonSpacing + buttonWidth / 2, startY + buttonHeight / 2);
 
+    // Display Name Section
+    this.ctx.font = '18px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = 'white';
+    this.ctx.fillText(t('game.settings.displayName'), CANVAS_WIDTH / 2, startY + buttonHeight + 30);
+
+    // Display current name
+    const currentName = this.player.displayName || '';
+    this.ctx.font = '16px Arial';
+    this.ctx.fillStyle = '#aaaaaa';
+    this.ctx.fillText(currentName, CANVAS_WIDTH / 2, startY + buttonHeight + 60);
+
+    // Draw change name button
+    const changeNameBtnWidth = 150;
+    const changeNameBtnHeight = 30;
+    const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
+    const changeNameBtnY = startY + buttonHeight + 80;
+
+    this.ctx.fillStyle = 'rgba(0, 100, 200, 0.8)';
+    this.ctx.fillRect(changeNameBtnX, changeNameBtnY, changeNameBtnWidth, changeNameBtnHeight);
+    this.ctx.strokeStyle = 'white';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(changeNameBtnX, changeNameBtnY, changeNameBtnWidth, changeNameBtnHeight);
+
+    this.ctx.fillStyle = 'white';
+    this.ctx.font = '16px Arial';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(t('game.settings.changeName'), changeNameBtnX + changeNameBtnWidth / 2, changeNameBtnY + changeNameBtnHeight / 2);
+
     // Draw close instructions
     this.ctx.font = '14px Arial';
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = 'white';
     this.ctx.fillText(t('game.settings.close'), CANVAS_WIDTH / 2, popupY + popupHeight - 30);
+  }
+  
+  // Show a welcome dialog for new players to set their display name
+  showWelcomeNameDialog(): void {
+    // Create dialog overlay
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    overlay.style.display = 'flex';
+    overlay.style.justifyContent = 'center';
+    overlay.style.alignItems = 'center';
+    overlay.style.zIndex = '1000';
+    
+    // Create dialog box
+    const dialog = document.createElement('div');
+    dialog.style.width = '400px';
+    dialog.style.padding = '20px';
+    dialog.style.backgroundColor = '#333';
+    dialog.style.borderRadius = '5px';
+    dialog.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
+    
+    // Create title
+    const title = document.createElement('h2');
+    title.textContent = t('game.settings.changeName');
+    title.style.color = 'white';
+    title.style.marginTop = '0';
+    title.style.textAlign = 'center';
+    
+    // Create welcome message
+    const welcomeMsg = document.createElement('p');
+    welcomeMsg.textContent = t('game.settings.welcome');
+    welcomeMsg.style.color = 'white';
+    welcomeMsg.style.textAlign = 'center';
+    welcomeMsg.style.marginBottom = '20px';
+    
+    // Create input field
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = t('game.settings.enterName');
+    input.value = this.player.displayName || '';
+    input.style.width = '100%';
+    input.style.padding = '12px';
+    input.style.marginTop = '15px';
+    input.style.marginBottom = '20px';
+    input.style.boxSizing = 'border-box';
+    input.style.backgroundColor = '#444';
+    input.style.color = 'white';
+    input.style.border = '1px solid #555';
+    input.style.borderRadius = '3px';
+    input.style.fontSize = '16px';
+    
+    // Create save button
+    const saveButton = document.createElement('button');
+    saveButton.textContent = t('game.settings.save');
+    saveButton.style.padding = '10px 20px';
+    saveButton.style.backgroundColor = '#2980b9';
+    saveButton.style.color = 'white';
+    saveButton.style.border = 'none';
+    saveButton.style.borderRadius = '3px';
+    saveButton.style.cursor = 'pointer';
+    saveButton.style.fontSize = '16px';
+    saveButton.style.width = '100%';
+    saveButton.style.marginTop = '10px';
+    
+    // Add event listeners
+    saveButton.addEventListener('click', () => {
+      const newName = input.value.trim();
+      if (newName) {
+        this.player.setDisplayName(newName);
+        document.body.removeChild(overlay);
+      } else {
+        // Highlight the input field if empty
+        input.style.border = '2px solid #e74c3c';
+        setTimeout(() => {
+          input.style.border = '1px solid #555';
+        }, 1000);
+      }
+    });
+    
+    // Handle Enter key press
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveButton.click();
+      }
+    });
+    
+    // Add elements to the dialog
+    dialog.appendChild(title);
+    dialog.appendChild(welcomeMsg);
+    dialog.appendChild(input);
+    dialog.appendChild(saveButton);
+    overlay.appendChild(dialog);
+    
+    // Add dialog to the document
+    document.body.appendChild(overlay);
+    
+    // Focus the input field
+    setTimeout(() => {
+      input.focus();
+      input.select(); // Select the default text to make it easier to replace
+    }, 100);
   }
 }
 

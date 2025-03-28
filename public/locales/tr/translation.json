@@ -33,6 +33,11 @@
     "settings": {
       "title": "Ayarlar",
       "language": "Dil",
+      "displayName": "Görünen İsim",
+      "changeName": "İsim Değiştir",
+      "enterName": "Görünen isminizi girin",
+      "welcome": "Hoş geldiniz! Lütfen görünecek isminizi girin.",
+      "save": "Kaydet",
       "close": "Kapatmak için bu açılır pencerenin dışına tıklayın"
     },
     "gathering": "Toplanıyor",

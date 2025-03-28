@@ -33,6 +33,11 @@
     "settings": {
       "title": "Settings",
       "language": "Language",
+      "displayName": "Display Name",
+      "changeName": "Change Name",
+      "enterName": "Enter your display name",
+      "welcome": "Welcome! Please enter your display name.",
+      "save": "Save",
       "close": "Click anywhere outside this popup to close"
     },
     "gathering": "Gathering",
