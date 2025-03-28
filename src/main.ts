@@ -97,16 +97,35 @@ if (!playerDisplayName) {
   localStorage.setItem('playerDisplayName', playerDisplayName);
 }
 
-let players: Record<string, any> = {};
+// Global variable for game instance
+let gameInstance: Game | null = null;
 
+// Store players data from the database
+let playersData: Record<string, any> = {};
+
+// Store other players' movement state
+let otherPlayersMovement: Record<string, {
+  currentPosition: { x: number, y: number },
+  targetPosition: { x: number, y: number, timestamp: number } | null,
+  isMoving: boolean,
+  lastUpdateTime: number // Track last update time for consistent movement
+}> = {};
+
+// Global variable to track last frame time for other players' movement
+let lastOtherPlayersUpdateTime = performance.now();
+
+// Store the most recent delta time for consistent movement calculations
+let lastDeltaTime = 1/60; // Default to 60 FPS
+
+// Set up player tracking
 const playerRef = ref(db, `players`);
 
 onValue(playerRef, snapshot => {
-  players = snapshot.val() || {};
-  console.log('Players updated:', players);
+  playersData = snapshot.val() || {};
+  console.log('Players updated:', playersData);
   
   // Update other players' movement state
-  Object.entries(players).forEach(([otherPlayerId, playerData]: [string, any]) => {
+  Object.entries(playersData).forEach(([otherPlayerId, playerData]: [string, any]) => {
     if (otherPlayerId === playerId) return; // Skip current player
     
     // Initialize player movement state if not exists
@@ -135,21 +154,48 @@ onValue(playerRef, snapshot => {
       }
     }
   });
+  
+  // Update the game UI if the game instance is available
+  if (gameInstance) {
+    // Force a redraw to show updated player positions
+    requestAnimationFrame(() => {
+      if (gameInstance) gameInstance.gameLoop();
+    });
+  }
 });
 
-// Store other players' movement state
-let otherPlayersMovement: Record<string, {
-  currentPosition: { x: number, y: number },
-  targetPosition: { x: number, y: number, timestamp: number } | null,
-  isMoving: boolean,
-  lastUpdateTime: number // Track last update time for consistent movement
-}> = {};
-
-// Global variable to track last frame time for other players' movement
-let lastOtherPlayersUpdateTime = performance.now();
-
-// Store the most recent delta time for consistent movement calculations
-let lastDeltaTime = 1/60; // Default to 60 FPS
+// Listen for resource changes globally to handle updates even before game initialization
+const resourcesRef = ref(db, 'resources');
+onValue(resourcesRef, snapshot => {
+  const resourcesData = snapshot.val() || {};
+  
+  // Update local resources with data from the database if game instance exists
+  if (gameInstance) {
+    Object.entries(resourcesData).forEach(([resourceId, resourceData]: [string, any]) => {
+      // Find the corresponding local resource
+      if (gameInstance) {
+        const localResource = gameInstance.resources.find((r: Resource) => r.resourceId === resourceId);
+        
+        if (localResource) {
+          // Update resource state
+          localResource.isGathered = resourceData.isGathered || false;
+          
+          // Update gathering state if not being gathered by the current player
+          if (resourceData.isBeingGathered && resourceData.gatheringPlayerId !== playerId) {
+            localResource.isBeingGathered = true;
+            localResource.gatheringPlayerId = resourceData.gatheringPlayerId;
+            localResource.gatheringPlayerName = resourceData.gatheringPlayerName || 'Another player';
+          }
+        }
+      }
+    });
+    
+    // Force a redraw to show updated resource states
+    requestAnimationFrame(() => {
+      if (gameInstance) gameInstance.gameLoop();
+    });
+  }
+});
 
 // Update other players' positions based on their movement state
 function updateOtherPlayersPositions(deltaTime: number) {
@@ -215,7 +261,7 @@ function updateOtherPlayersPositions(deltaTime: number) {
 
 function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, currentPlayerId: string, deltaTime?: number) {
   // Skip if no players data
-  if (!players) return;
+  if (!playersData) return;
   
   // Update other players' positions using the provided delta time or the last known delta time
   updateOtherPlayersPositions(deltaTime || lastDeltaTime);
@@ -225,43 +271,18 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
     lastDeltaTime = deltaTime;
   }
   
-  // Generate consistent colors for each player
-  const getPlayerColor = (playerId: string) => {
-    // Use a simple hash function to generate a consistent color based on player ID
-    let hash = 0;
-    for (let i = 0; i < playerId.length; i++) {
-      hash = playerId.charCodeAt(i) + ((hash << 5) - hash);
-    }
+  // Draw other players from the database
+  Object.entries(playersData).forEach(([otherPlayerId, playerData]: [string, any]) => {
+    if (otherPlayerId === currentPlayerId) return; // Skip current player
     
-    // Generate RGB values
-    const r = Math.abs((hash & 0xFF0000) >> 16);
-    const g = Math.abs((hash & 0x00FF00) >> 8);
-    const b = Math.abs(hash & 0x0000FF);
+    const movementData = otherPlayersMovement[otherPlayerId];
+    if (!movementData) return;
     
-    return `rgb(${r}, ${g}, ${b})`;
-  };
-  
-  // Draw each player
-  Object.entries(players).forEach(([id, playerData]) => {
-    // Skip drawing current player (they're drawn separately)
-    if (id === currentPlayerId) return;
-    
-    // Get player position from our locally calculated position
-    let x, y;
-    if (otherPlayersMovement[id]) {
-      x = otherPlayersMovement[id].currentPosition.x;
-      y = otherPlayersMovement[id].currentPosition.y;
-    } else if (playerData && playerData.position) {
-      // Fallback to database position if local calculation not available
-      x = playerData.position.x;
-      y = playerData.position.y;
-    } else {
-      return; // Skip if no position data available
-    }
+    const { currentPosition } = movementData;
     
     // Calculate screen position
-    const screenX = x - cameraOffset.x;
-    const screenY = y - cameraOffset.y;
+    const screenX = currentPosition.x - cameraOffset.x;
+    const screenY = currentPosition.y - cameraOffset.y;
     
     // Only draw if on screen
     if (screenX < -PLAYER_SIZE || screenX > CANVAS_WIDTH + PLAYER_SIZE || 
@@ -269,52 +290,22 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
       return;
     }
     
-    // Draw player circle with unique color
-    const playerColor = getPlayerColor(id);
-    ctx.fillStyle = playerColor;
+    // Draw player circle
     ctx.beginPath();
     ctx.arc(screenX, screenY, PLAYER_SIZE, 0, Math.PI * 2);
+    ctx.fillStyle = '#3498db'; // Blue color for other players
     ctx.fill();
-    
-    // Draw border
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.strokeStyle = '#2980b9';
     ctx.lineWidth = 2;
     ctx.stroke();
     
-    // Draw movement indicator if player is moving
-    if (otherPlayersMovement[id] && otherPlayersMovement[id].isMoving && otherPlayersMovement[id].targetPosition) {
-      const targetX = otherPlayersMovement[id].targetPosition.x - cameraOffset.x;
-      const targetY = otherPlayersMovement[id].targetPosition.y - cameraOffset.y;
-      
-      // Draw a line to target position
-      ctx.strokeStyle = playerColor;
-      ctx.globalAlpha = 0.3;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(screenX, screenY);
-      ctx.lineTo(targetX, targetY);
-      ctx.stroke();
-      ctx.globalAlpha = 1.0;
-      
-      // Draw small circle at target position
-      ctx.fillStyle = playerColor;
-      ctx.beginPath();
-      ctx.arc(targetX, targetY, 3, 0, Math.PI * 2);
-      ctx.fill();
+    // Draw player name if available
+    if (playerData.displayName) {
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'white';
+      ctx.fillText(playerData.displayName, screenX, screenY - 25);
     }
-    
-    // Draw player display name above (or ID if display name not available)
-    const displayName = playerData.displayName || id.substring(0, 8);
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 3;
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'bottom';
-    
-    // Draw text with outline for better visibility
-    ctx.strokeText(displayName, screenX, screenY - PLAYER_SIZE - 5);
-    ctx.fillText(displayName, screenX, screenY - PLAYER_SIZE - 5);
   });
 }
 
@@ -367,23 +358,61 @@ class Game {
         this.showWelcomeNameDialog();
       }, 1000);
     }
+    
+    // Set the global game instance
+    gameInstance = this;
+    
+    // Set up resource listener after game is initialized
+    this.setupResourceListener();
+  }
+  
+  // Set up listener for resource changes in the database
+  setupResourceListener(): void {
+    // This is now handled globally to ensure resources are tracked
+    // even before the game is fully initialized
+    console.log("Resource listener already set up globally");
   }
 
-  async init() {
-    // Initialize language manager
-    await this.languageManager.init();
-
-    // Subscribe to language changes
-    this.languageManager.onLanguageChange(() => {
-      // Redraw UI when language changes
-      this.render();
+  init() {
+    return new Promise<void>(async (resolve) => {
+      // Initialize language manager first
+      await this.languageManager.init();
+      
+      // Subscribe to language changes
+      this.languageManager.onLanguageChange(() => {
+        // Redraw UI when language changes
+        if (this.assetsLoaded) {
+          this.draw();
+        }
+      });
+      
+      // Load textures
+      this.grassTexture.src = ASSET_PATHS.GRASS;
+      this.cliffTexture.src = ASSET_PATHS.CLIFF;
+      
+      // Wait for textures to load
+      let loadedCount = 0;
+      const totalAssets = 2;
+      
+      const checkAllLoaded = () => {
+        loadedCount++;
+        if (loadedCount >= totalAssets) {
+          this.assetsLoaded = true;
+          
+          // Generate resources
+          this.generateResources();
+          
+          // Start game loop
+          this.lastFrameTime = performance.now();
+          requestAnimationFrame(() => this.gameLoop());
+          
+          resolve();
+        }
+      };
+      
+      this.grassTexture.onload = checkAllLoaded;
+      this.cliffTexture.onload = checkAllLoaded;
     });
-
-    // Load assets
-    this.loadAssets();
-
-    // JSON dosyasından kaynakları yükle
-    await this.generateResources();
   }
 
   async generateResources() {
@@ -399,6 +428,8 @@ class Game {
 
       const mapResources = mapData.resources.locations;
 
+      console.log("Map resources:", mapResources);
+
       if (mapResources && Array.isArray(mapResources)) {
         mapResources.forEach((resource: { x: number; y: number; rarity: number }) => {
           if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
@@ -408,39 +439,7 @@ class Game {
         });
       }
 
-      // const mapsResult = await db.queryOnce({
-      //   maps: {
-      //     $: {
-      //       where: {
-      //         id: DEFAULT_MAP_ID
-      //       }
-      //     }
-      //   }
-      // });
-
-      // const dbResources = mapsResult.data?.maps?.find(map => map.id === DEFAULT_MAP_ID)?.resources;
-
-      // if (result && result.resources && Array.isArray(result.resources)) {
-      //   // result.forEach((resource: { x: number; y: number; rarity: number }) => {
-      //   //   if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
-      //   //     const newResource = new Resource(resource.x, resource.y, resource.rarity);
-
-      //   //     this.resources.push(newResource);
-      //   //   }
-      //   // });
-
-      //   result.resources.forEach((resource: { x: number; y: number; rarity: number }) => {
-      //     if (typeof resource.x === 'number' && typeof resource.y === 'number' && typeof resource.rarity === 'number') {
-      //       const newResource = new Resource(resource.x, resource.y, resource.rarity);
-
-      //       this.resources.push(newResource);
-      //     }
-      //   });
-
-      //   console.log(`Loaded ${this.resources.length} resources from DB`);
-      // } else {
-      //   throw new Error('Invalid JSON format');
-      // }
+      console.log(`Loaded ${this.resources.length} resources from DB`);
     } catch (error) {
       console.error('Error loading resources from DB:', error);
       this.generateDefaultResources();
@@ -526,98 +525,22 @@ class Game {
     );
   }
 
-  loadAssets() {
-    let loadedAssets = 0;
-    const totalAssets = 7; // grass, cliff, and 5 resource images
-
-    const onAssetLoad = () => {
-      loadedAssets++;
-      console.log(`Asset loaded: ${loadedAssets}/${totalAssets}`);
-      if (loadedAssets === totalAssets) {
-        this.assetsLoaded = true;
-        console.log('All assets loaded successfully');
-        // Start the game loop once assets are loaded
-        requestAnimationFrame(this.gameLoop.bind(this));
-      }
-    };
-
-    // Set up event listeners for asset loading
-    this.grassTexture.onload = () => {
-      console.log('Grass texture loaded');
-      onAssetLoad();
-    };
-
-    this.cliffTexture.onload = () => {
-      console.log('Cliff texture loaded');
-      onAssetLoad();
-    };
-
-    const resourceT1Image = new Image();
-    resourceT1Image.onload = () => {
-      console.log('Resource T1 texture loaded');
-      onAssetLoad();
-    };
-
-    const resourceT2Image = new Image();
-    resourceT2Image.onload = () => {
-      console.log('Resource T2 texture loaded');
-      onAssetLoad();
-    };
-
-    const resourceT3Image = new Image();
-    resourceT3Image.onload = () => {
-      console.log('Resource T3 texture loaded');
-      onAssetLoad();
-    };
-
-    const resourceT4Image = new Image();
-    resourceT4Image.onload = () => {
-      console.log('Resource T4 texture loaded');
-      onAssetLoad();
-    };
-
-    const resourceT5Image = new Image();
-    resourceT5Image.onload = () => {
-      console.log('Resource T5 texture loaded');
-      onAssetLoad();
-    };
-
-    // Load the textures
-    this.grassTexture.src = ASSET_PATHS.GRASS;
-    this.cliffTexture.src = ASSET_PATHS.CLIFF;
-    resourceT1Image.src = ASSET_PATHS.RESOURCE_T1;
-    resourceT2Image.src = ASSET_PATHS.RESOURCE_T2;
-    resourceT3Image.src = ASSET_PATHS.RESOURCE_T3;
-    resourceT4Image.src = ASSET_PATHS.RESOURCE_T4;
-    resourceT5Image.src = ASSET_PATHS.RESOURCE_T5;
-
-    // Set a timeout to check if assets are loaded after 2 seconds
-    setTimeout(() => {
-      if (!this.assetsLoaded) {
-        console.warn('Assets taking too long to load, starting game with defaults');
-        this.assetsLoaded = true;
-        requestAnimationFrame(this.gameLoop.bind(this));
-      }
-    }, 2000);
-  }
-
   setupEventListeners() {
-    // Track mouse position for cursor updates
-    this.lastMouseX = 0;
-    this.lastMouseY = 0;
-
-    this.canvas.addEventListener('mousemove', event => {
-      this.lastMouseX = event.clientX;
-      this.lastMouseY = event.clientY;
-      this.updateCursor();
+    // Mouse move event
+    this.canvas.addEventListener('mousemove', (e) => {
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+      
+      // Update cursor
+      this.updateMouseCursor();
     });
 
     // Mouse wheel for scrolling popup
-    this.canvas.addEventListener('wheel', event => {
+    this.canvas.addEventListener('wheel', (e) => {
       if (this.showControlsPopup || this.showSettingsPopup) {
         const rect = this.canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
         // Check if mouse is over the popup content area
         const popupX = CANVAS_WIDTH / 2 - 200;
@@ -627,10 +550,10 @@ class Game {
 
         if (mouseX >= popupX && mouseX <= popupX + popupWidth && mouseY >= popupY && mouseY <= popupY + popupHeight) {
           // Prevent default scrolling behavior
-          event.preventDefault();
+          e.preventDefault();
 
           // Update scroll position based on wheel delta
-          this.popupScrollPosition += event.deltaY * 0.5;
+          this.popupScrollPosition += e.deltaY * 0.5;
 
           // Clamp scroll position
           const totalContentHeight = 24 * 20; // lineHeight * number of lines
@@ -643,10 +566,10 @@ class Game {
     });
 
     // Left click for gathering and UI interaction
-    this.canvas.addEventListener('click', event => {
+    this.canvas.addEventListener('click', (e) => {
       const rect = this.canvas.getBoundingClientRect();
-      const clickX = event.clientX - rect.left;
-      const clickY = event.clientY - rect.top;
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
 
       // Check if clicked on controls button
       if (this.isPointInControlsButton(clickX, clickY)) {
@@ -659,8 +582,12 @@ class Game {
       // Check if clicked on settings button
       if (this.isPointInSettingsButton(clickX, clickY)) {
         this.showSettingsPopup = !this.showSettingsPopup;
-        this.showControlsPopup = false; // Close controls if open
-        this.popupScrollPosition = 0; // Reset scroll position
+        this.showControlsPopup = false; // Close controls popup if open
+        return;
+      }
+
+      // Check if clicked on language buttons in settings popup
+      if (this.handleLanguageButtonClick(clickX, clickY)) {
         return;
       }
 
@@ -677,9 +604,6 @@ class Game {
         if (!this.isPointInSettingsPopup(clickX, clickY)) {
           this.showSettingsPopup = false;
         }
-
-        // Check if language buttons were clicked
-        this.handleLanguageButtonClicks(clickX, clickY);
         return;
       }
 
@@ -703,13 +627,13 @@ class Game {
     });
 
     // Right click for movement
-    this.canvas.addEventListener('contextmenu', event => {
+    this.canvas.addEventListener('contextmenu', (e) => {
       // Prevent the context menu from appearing
-      event.preventDefault();
+      e.preventDefault();
 
       const rect = this.canvas.getBoundingClientRect();
-      const clickX = event.clientX - rect.left;
-      const clickY = event.clientY - rect.top;
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
 
       // Convert screen coordinates to world coordinates
       const cameraOffset = this.camera.getOffset();
@@ -794,25 +718,27 @@ class Game {
     return null;
   }
 
-  gameLoop(timestamp: number) {
-    // Calculate delta time in seconds
-    const deltaTime = (timestamp - this.lastFrameTime) / 1000;
-    this.lastFrameTime = timestamp;
+  gameLoop() {
+    // Calculate delta time
+    const currentTime = performance.now();
+    const deltaTime = (currentTime - this.lastFrameTime) / 1000; // Convert to seconds
+    this.lastFrameTime = currentTime;
     
-    // Store the delta time for consistent movement
-    lastDeltaTime = deltaTime;
-
-    // Update
-    this.update(deltaTime);
-
-    // Render
-    this.render(deltaTime);
-
-    // Schedule next frame
-    requestAnimationFrame(this.gameLoop.bind(this));
+    // Clear the canvas
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    
+    // Update game state
+    this.updateGame(deltaTime);
+    
+    // Draw the game
+    this.draw();
+    
+    // Request next frame
+    requestAnimationFrame(() => this.gameLoop());
   }
-
-  update(deltaTime: number) {
+  
+  // Update game state
+  updateGame(deltaTime: number) {
     // Update player
     this.player.update(deltaTime);
 
@@ -828,10 +754,11 @@ class Game {
     this.camera.update(this.player.position);
 
     // Update cursor based on what's under it
-    this.updateCursor();
+    this.updateMouseCursor();
   }
 
-  updateCursor() {
+  // Update cursor based on what's under it
+  updateMouseCursor() {
     // Get the mouse position
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = this.lastMouseX - rect.left;
@@ -851,7 +778,7 @@ class Game {
     // Check if mouse is over a resource
     const resourceUnderMouse = this.findResourceAtPosition(worldX, worldY);
 
-    if (resourceUnderMouse && resourceUnderMouse.canBeGathered()) {
+    if (resourceUnderMouse && !resourceUnderMouse.isGathered) {
       // Check if player is close enough to gather
       const distance = this.player.position.distanceTo(resourceUnderMouse.position);
 
@@ -867,66 +794,52 @@ class Game {
       this.canvas.style.cursor = 'default';
     }
   }
-
-  render(deltaTime?: number) {
-    if (!this.assetsLoaded) {
-      // Draw loading screen
-      this.ctx.fillStyle = 'black';
-      this.ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      this.ctx.fillStyle = 'white';
-      this.ctx.font = '24px Arial';
-      this.ctx.textAlign = 'center';
-      this.ctx.textBaseline = 'middle';
-      this.ctx.fillText(t('game.ui.loading'), CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-      return;
-    }
-
-    // Clear canvas
-    this.ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // Calculate camera offset
+  
+  draw() {
+    // Get camera offset for drawing
     const cameraOffset = this.camera.getOffset();
-
-    // Draw map
+    
+    // Draw the map
     this.drawMap(cameraOffset);
-
+    
     // Draw resources
     this.drawResources(cameraOffset);
-
-    // Draw target cross if player is moving
-    if (this.player.isMoving && this.player.targetPosition) {
-      this.drawTargetCross(this.player.targetPosition, cameraOffset);
-    }
-
+    
     // Draw other players
-    drawPlayers(this.ctx, cameraOffset, playerId || '', deltaTime);
-
-    // Draw player
+    drawPlayers(this.ctx, cameraOffset, this.player.playerId);
+    
+    // Draw the player
     this.player.draw(this.ctx);
-
+    
+    // Draw UI elements
+    this.drawUserInterface();
+    
+    // Draw minimap
+    this.drawMinimap();
+    
+    // Draw popups if needed
+    if (this.showControlsPopup) {
+      this.drawControlsPopup();
+    }
+    
+    if (this.showSettingsPopup) {
+      this.drawSettingsPopup();
+    }
+  }
+  
+  // Draw UI elements
+  drawUserInterface() {
     // Draw player inventory
     this.player.drawInventory(this.ctx);
 
     // Draw gathering UI if gathering
     this.player.drawGatheringUI(this.ctx);
 
-    // Draw minimap
-    this.drawMinimap();
-
     // Draw UI buttons
     this.drawControlsButton();
     this.drawSettingsButton();
-
-    // Draw popups if open
-    if (this.showControlsPopup) {
-      this.drawControlsPopup();
-    }
-
-    if (this.showSettingsPopup) {
-      this.drawSettingsPopup();
-    }
   }
-
+  
   isPointInControlsButton(x: number, y: number): boolean {
     const buttonX = 10;
     const buttonY = 10;
@@ -963,46 +876,34 @@ class Game {
     return x >= popupX && x <= popupX + popupWidth && y >= popupY && y <= popupY + popupHeight;
   }
 
-  handleLanguageButtonClicks(x: number, y: number): void {
-    // Language buttons positions
+  handleLanguageButtonClick(x: number, y: number): boolean {
+    if (!this.showSettingsPopup) return false;
+    
+    // Buton boyutları ve konumları (drawSettingsPopup ile aynı olmalı)
     const buttonWidth = 80;
     const buttonHeight = 30;
     const buttonSpacing = 20;
     const startX = CANVAS_WIDTH / 2 - buttonWidth - buttonSpacing / 2;
     const startY = CANVAS_HEIGHT / 2 - 50;
-
-    // Check if English button was clicked
-    if (x >= startX && x <= startX + buttonWidth && y >= startY && y <= startY + buttonHeight) {
+    
+    // İngilizce butonu kontrolü
+    if (x >= startX && x <= startX + buttonWidth && 
+        y >= startY && y <= startY + buttonHeight) {
       this.languageManager.loadTranslations('en');
-      return;
+      console.log("Dil İngilizce olarak değiştirildi");
+      return true;
     }
-
-    // Check if Turkish button was clicked
-    if (
-      x >= startX + buttonWidth + buttonSpacing &&
-      x <= startX + buttonWidth * 2 + buttonSpacing &&
-      y >= startY &&
-      y <= startY + buttonHeight
-    ) {
+    
+    // Türkçe butonu kontrolü
+    if (x >= startX + buttonWidth + buttonSpacing && 
+        x <= startX + buttonWidth * 2 + buttonSpacing && 
+        y >= startY && y <= startY + buttonHeight) {
       this.languageManager.loadTranslations('tr');
-      return;
+      console.log("Dil Türkçe olarak değiştirildi");
+      return true;
     }
     
-    // Check if change name button was clicked
-    const changeNameBtnWidth = 150;
-    const changeNameBtnHeight = 30;
-    const changeNameBtnX = CANVAS_WIDTH / 2 - changeNameBtnWidth / 2;
-    const changeNameBtnY = startY + buttonHeight + 80;
-    
-    if (
-      x >= changeNameBtnX &&
-      x <= changeNameBtnX + changeNameBtnWidth &&
-      y >= changeNameBtnY &&
-      y <= changeNameBtnY + changeNameBtnHeight
-    ) {
-      this.showDisplayNameDialog();
-      return;
-    }
+    return false;
   }
   
   // Show a dialog to change the display name

@@ -179,7 +179,7 @@ export class Player {
 
     this.currentResource = resource;
     this.isGathering = true;
-    resource.startGathering();
+    resource.startGathering(this.playerId, this.displayName);
   }
 
   updateResourceGathering(deltaTime: number): void {

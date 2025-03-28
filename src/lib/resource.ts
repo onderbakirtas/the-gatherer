@@ -9,6 +9,8 @@ import {
 import { getResourceColor } from '../utils/get-resource-color';
 import { ResourceRarity } from '../utils/types';
 import { Vector2 } from './vector2';
+import { ref, set, get } from 'firebase/database';
+import { db } from '../utils/firebase';
 
 // Resource images
 const resourceT1Image = new Image();
@@ -37,6 +39,9 @@ class Resource {
   refillTime: number; // Time in seconds until resource refills
   refillProgress: number = 0;
   image: HTMLImageElement;
+  resourceId: string; // Unique ID for the resource
+  gatheringPlayerId: string | null = null; // ID of the player gathering this resource
+  gatheringPlayerName: string | null = null; // Name of the player gathering this resource
 
   constructor(x: number, y: number, rarity: ResourceRarity) {
     this.position = new Vector2(x, y);
@@ -44,6 +49,9 @@ class Resource {
 
     // Set gather time based on rarity (1, 2, or 3 seconds)
     this.gatherTime = rarity + 1;
+    
+    // Generate a unique ID for the resource based on position and rarity
+    this.resourceId = `resource_${x}_${y}_${rarity}`;
 
     // Assign the appropriate image based on rarity
     switch (rarity) {
@@ -80,15 +88,36 @@ class Resource {
     return getResourceColor(this.rarity);
   }
 
-  startGathering(): void {
+  startGathering(playerId: string, playerName: string): void {
     if (this.isGathered) return; // Can't gather if already gathered
-    this.isBeingGathered = true;
-    this.gatherProgress = 0;
+    
+    // Check if resource is already being gathered in the database
+    this.checkGatheringStateInDB(playerId, playerName).then(isAvailable => {
+      if (!isAvailable) return; // Resource is being gathered by someone else
+      
+      this.isBeingGathered = true;
+      this.gatherProgress = 0;
+      this.gatheringPlayerId = playerId;
+      this.gatheringPlayerName = playerName;
+      
+      // Update gathering state in the database
+      this.updateGatheringStateInDB();
+    });
   }
 
   stopGathering(): void {
+    if (!this.isBeingGathered) return;
+    
     this.isBeingGathered = false;
     this.gatherProgress = 0;
+    
+    // Only clear the database entry if this player is the one gathering
+    if (this.gatheringPlayerId) {
+      // Clear gathering state in the database
+      this.clearGatheringStateInDB();
+      this.gatheringPlayerId = null;
+      this.gatheringPlayerName = null;
+    }
   }
 
   updateGathering(deltaTime: number): boolean {
@@ -100,11 +129,105 @@ class Resource {
     if (this.gatherProgress >= this.gatherTime) {
       this.isBeingGathered = false;
       this.isGathered = true;
-      this.gatherProgress = 0;
+      this.gatheringPlayerId = null;
+      this.gatheringPlayerName = null;
+      
+      // Clear gathering state and update gathered state in the database
+      this.clearGatheringStateInDB();
+      this.updateGatheredStateInDB();
+      
+      // Start refill timer
+      this.refillProgress = 0;
+      
       return true;
     }
-
+    
     return false;
+  }
+  
+  // Check if the resource is available for gathering in the database
+  async checkGatheringStateInDB(playerId: string, playerName: string): Promise<boolean> {
+    try {
+      const resourceRef = ref(db, `resources/${this.resourceId}`);
+      const snapshot = await get(resourceRef);
+      
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        
+        // If resource is being gathered by someone else
+        if (data.isBeingGathered && data.gatheringPlayerId !== playerId) {
+          // Store the gathering player info for display
+          this.gatheringPlayerId = data.gatheringPlayerId;
+          this.gatheringPlayerName = data.gatheringPlayerName || playerName || 'Another player';
+          console.log(`Resource is being gathered by ${this.gatheringPlayerName}`);
+          return false;
+        }
+        
+        // If resource is gathered (not available)
+        if (data.isGathered) {
+          this.isGathered = true;
+          return false;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error("Error checking resource gathering state:", error);
+      return true; // Allow gathering on error to prevent blocking
+    }
+  }
+  
+  // Update the gathering state in the database
+  updateGatheringStateInDB(): void {
+    if (!this.gatheringPlayerId) return;
+    
+    const resourceRef = ref(db, `resources/${this.resourceId}`);
+    set(resourceRef, {
+      position: {
+        x: this.position.x,
+        y: this.position.y
+      },
+      rarity: this.rarity,
+      isBeingGathered: true,
+      isGathered: this.isGathered,
+      gatheringPlayerId: this.gatheringPlayerId,
+      gatheringPlayerName: this.gatheringPlayerName,
+      lastUpdated: Date.now()
+    });
+  }
+  
+  // Clear the gathering state in the database
+  clearGatheringStateInDB(): void {
+    const resourceRef = ref(db, `resources/${this.resourceId}`);
+    set(resourceRef, {
+      position: {
+        x: this.position.x,
+        y: this.position.y
+      },
+      rarity: this.rarity,
+      isBeingGathered: false,
+      isGathered: this.isGathered,
+      gatheringPlayerId: null,
+      gatheringPlayerName: null,
+      lastUpdated: Date.now()
+    });
+  }
+  
+  // Update the gathered state in the database
+  updateGatheredStateInDB(): void {
+    const resourceRef = ref(db, `resources/${this.resourceId}`);
+    set(resourceRef, {
+      position: {
+        x: this.position.x,
+        y: this.position.y
+      },
+      rarity: this.rarity,
+      isBeingGathered: false,
+      isGathered: true,
+      gatheringPlayerId: null,
+      gatheringPlayerName: null,
+      lastUpdated: Date.now()
+    });
   }
 
   updateRefill(deltaTime: number): void {
@@ -206,6 +329,39 @@ class Resource {
 
       ctx.restore();
     }
+
+    // Draw warning message if being gathered by another player
+    this.drawGatheringWarning(ctx, cameraOffset);
+  }
+
+  // Draw a warning message when the resource is being gathered by another player
+  drawGatheringWarning(ctx: CanvasRenderingContext2D, cameraOffset: Vector2): void {
+    if (!this.gatheringPlayerId || !this.gatheringPlayerName) return;
+    
+    // Calculate screen position
+    const screenX = this.position.x - cameraOffset.x;
+    const screenY = this.position.y - cameraOffset.y;
+    
+    // Only draw if on screen
+    if (screenX < -RESOURCE_SIZE || screenX > CANVAS_WIDTH + RESOURCE_SIZE || 
+        screenY < -RESOURCE_SIZE || screenY > CANVAS_HEIGHT + RESOURCE_SIZE) {
+      return;
+    }
+    
+    // Draw red warning text
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(screenX - 100, screenY - 60, 200, 30);
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(screenX - 100, screenY - 60, 200, 30);
+    
+    ctx.font = 'bold 14px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'red';
+    ctx.fillText(`${this.gatheringPlayerName} is gathering`, screenX, screenY - 45);
+    ctx.restore();
   }
 
   drawOnMinimap(
