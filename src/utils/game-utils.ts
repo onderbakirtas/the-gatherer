@@ -62,7 +62,13 @@ function updatePosition(x: number, y: number) {
     localStorage.setItem('playerId', playerId);
   }
 
-  set(ref(db, `players/${playerId}`), { x, y });
+  // Store the target position in the database
+  // This will be used by other clients to show where the player is heading
+  set(ref(db, `players/${playerId}/targetPosition`), { 
+    x, 
+    y,
+    timestamp: Date.now() 
+  });
 }
 
 export { grassImage, cliffImage, createDefaultGrassTexture, createDefaultCliffTexture, updatePosition };

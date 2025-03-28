@@ -6,6 +6,7 @@ import {
   MAP_WIDTH,
   MAP_HEIGHT,
   PLAYER_SIZE,
+  PLAYER_SPEED,
   BORDER_WIDTH,
   MINIMAP_SIZE,
   MINIMAP_PADDING,
@@ -103,11 +104,83 @@ const playerRef = ref(db, `players`);
 onValue(playerRef, snapshot => {
   players = snapshot.val() || {};
   console.log('Players updated:', players);
+  
+  // Update other players' movement state
+  Object.entries(players).forEach(([otherPlayerId, playerData]: [string, any]) => {
+    if (otherPlayerId === playerId) return; // Skip current player
+    
+    // Initialize player movement state if not exists
+    if (!otherPlayersMovement[otherPlayerId]) {
+      otherPlayersMovement[otherPlayerId] = {
+        currentPosition: playerData.position || { x: 0, y: 0 },
+        targetPosition: null,
+        isMoving: false
+      };
+    }
+    
+    // Update current position if available
+    if (playerData.position) {
+      otherPlayersMovement[otherPlayerId].currentPosition = playerData.position;
+    }
+    
+    // Update target position if available
+    if (playerData.targetPosition) {
+      // If this is a new target or a more recent one
+      if (!otherPlayersMovement[otherPlayerId].targetPosition || 
+          playerData.targetPosition.timestamp > otherPlayersMovement[otherPlayerId].targetPosition!.timestamp) {
+        otherPlayersMovement[otherPlayerId].targetPosition = playerData.targetPosition;
+        otherPlayersMovement[otherPlayerId].isMoving = true;
+      }
+    }
+  });
 });
+
+// Store other players' movement state
+let otherPlayersMovement: Record<string, {
+  currentPosition: { x: number, y: number },
+  targetPosition: { x: number, y: number, timestamp: number } | null,
+  isMoving: boolean
+}> = {};
+
+// Update other players' positions based on their movement state
+function updateOtherPlayersPositions(deltaTime: number) {
+  Object.entries(otherPlayersMovement).forEach(([otherPlayerId, movementData]) => {
+    if (!movementData.isMoving || !movementData.targetPosition) return;
+    
+    const currentPos = movementData.currentPosition;
+    const targetPos = movementData.targetPosition;
+    
+    // Calculate distance to target
+    const dx = targetPos.x - currentPos.x;
+    const dy = targetPos.y - currentPos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // If player has reached the target
+    if (distance < 5) {
+      movementData.currentPosition = { x: targetPos.x, y: targetPos.y };
+      movementData.isMoving = false;
+      return;
+    }
+    
+    // Calculate direction vector
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    
+    // Calculate movement distance for this frame
+    const moveDistance = PLAYER_SPEED * deltaTime;
+    
+    // Update position
+    movementData.currentPosition.x += dirX * moveDistance;
+    movementData.currentPosition.y += dirY * moveDistance;
+  });
+}
 
 function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, currentPlayerId: string) {
   // Skip if no players data
   if (!players) return;
+  
+  // Update other players' positions
+  updateOtherPlayersPositions(1/60); // Assume 60 FPS for consistent movement speed
   
   // Generate consistent colors for each player
   const getPlayerColor = (playerId: string) => {
@@ -127,12 +200,21 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
   
   // Draw each player
   Object.entries(players).forEach(([id, playerData]) => {
-    if (!playerData || !playerData.position) return;
-    
-    const { x, y } = playerData.position;
-    
     // Skip drawing current player (they're drawn separately)
     if (id === currentPlayerId) return;
+    
+    // Get player position from our locally calculated position
+    let x, y;
+    if (otherPlayersMovement[id]) {
+      x = otherPlayersMovement[id].currentPosition.x;
+      y = otherPlayersMovement[id].currentPosition.y;
+    } else if (playerData && playerData.position) {
+      // Fallback to database position if local calculation not available
+      x = playerData.position.x;
+      y = playerData.position.y;
+    } else {
+      return; // Skip if no position data available
+    }
     
     // Calculate screen position
     const screenX = x - cameraOffset.x;
@@ -155,6 +237,28 @@ function drawPlayers(ctx: CanvasRenderingContext2D, cameraOffset: Vector2, curre
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
     ctx.lineWidth = 2;
     ctx.stroke();
+    
+    // Draw movement indicator if player is moving
+    if (otherPlayersMovement[id] && otherPlayersMovement[id].isMoving && otherPlayersMovement[id].targetPosition) {
+      const targetX = otherPlayersMovement[id].targetPosition.x - cameraOffset.x;
+      const targetY = otherPlayersMovement[id].targetPosition.y - cameraOffset.y;
+      
+      // Draw a line to target position
+      ctx.strokeStyle = playerColor;
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(screenX, screenY);
+      ctx.lineTo(targetX, targetY);
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+      
+      // Draw small circle at target position
+      ctx.fillStyle = playerColor;
+      ctx.beginPath();
+      ctx.arc(targetX, targetY, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
     
     // Draw player display name above (or ID if display name not available)
     const displayName = playerData.displayName || id.substring(0, 8);

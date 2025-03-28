@@ -95,7 +95,11 @@ export class Player {
     if (this.isGathering) return;
 
     this.targetPosition = new Vector2(x, y);
+    
+    // Send the target position to the database
+    // Other clients will use this to show where the player is heading
     updatePosition(x, y);
+    
     this.isMoving = true;
 
     // Stop gathering if player moves
@@ -120,7 +124,7 @@ export class Player {
       this.isMoving = false;
       this.targetPosition = null;
       
-      // Update position in database when player stops moving
+      // Update final position in database when player stops moving
       this.updatePlayerPositionInDB();
       return;
     }
@@ -139,8 +143,9 @@ export class Player {
     this.position.x += moveVector.x;
     this.position.y += moveVector.y;
     
-    // Update position in database periodically (every ~500ms)
-    if (Math.random() < 0.03) { // Throttle updates to reduce database writes
+    // Only update position in database occasionally to reduce load
+    // This is mainly for players who just joined and need to see current positions
+    if (Math.random() < 0.01) { // Reduced frequency (approximately every ~1.5 seconds)
       this.updatePlayerPositionInDB();
     }
   }
